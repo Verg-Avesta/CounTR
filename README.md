@@ -9,8 +9,11 @@ CUDA_VISIBLE_DEVICES=5 nohup python -u FSC_train.py \
 ```
 
 Now is doing overfitting experiments without normalization and with encoder fixed.
+
 The density map is scaled up by 100x.
 2 batches, 16 images.
+Batch size = 8, accum_iter = 2.
+
 
 Codes about pre-processing data in FSC147 are in file *FSC147.py*. In *FSC147.py*, only *TransformTrain* and *class resizeTrainImage* are used in fientuning.
 
