@@ -21,4 +21,4 @@ Codes about pre-processing data in FSC147 are in file *FSC147.py*. In *FSC147.py
 |  ----  | ----  | ----  |
 | Pretrain on ImageNet | models_mae.py | main_pretrain.py & engine_pretrain.py |
 | Pretrain on FSC147 | models_mae_noct.py | FSC_pretrain.py |
-| Finetune on FSC147 | models_mae_up.py | FSC_train.py |
+| Finetune on FSC147 | models_mae_up.py | FSC_finetune.py |
