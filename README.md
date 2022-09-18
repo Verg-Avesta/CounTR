@@ -1,4 +1,4 @@
-# MAE_Counting
+# CounTR
 
 Run the code by
 
