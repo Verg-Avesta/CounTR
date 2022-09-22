@@ -107,7 +107,7 @@ CARPK | 5.75 | 7.45 |[weights]()
 
 ### Visualisation
 
-![result](img/goodpred.png)
+<img src=img/goodpred.png width="70%"/>
 
 ### Citation
 
