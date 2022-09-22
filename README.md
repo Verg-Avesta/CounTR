@@ -7,7 +7,7 @@ Official PyTorch implementation for CounTR. Details can be found in the paper.
 
 [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/countr-transformer-based-generalised-visual/object-counting-on-carpk)](https://paperswithcode.com/sota/object-counting-on-carpk?p=countr-transformer-based-generalised-visual)
 
-![architecture](img/arch.png)
+<img src=img/arch.png width="80%"/>
 
 ### Contents
 * [Preparation](#preparation)
@@ -107,7 +107,7 @@ CARPK | 5.75 | 7.45 |[weights]()
 
 ### Visualisation
 
-<img src=img/goodpred.png width="70%"/>
+<img src=img/goodpred.png width="75%"/>
 
 ### Citation
 
