@@ -7,11 +7,14 @@ Official PyTorch implementation for CounTR. Details can be found in the paper.
 
 [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/countr-transformer-based-generalised-visual/object-counting-on-carpk)](https://paperswithcode.com/sota/object-counting-on-carpk?p=countr-transformer-based-generalised-visual)
 
+![architecture](img/arch.png)
+
 ### Contents
 * [Preparation](#preparation)
 * [CounTR train](#countr-train)
 * [CounTR inference](#countr-inference)
 * [Pre-trained weights](#pre-trained-weights)
+* [Visualisation](#visualisation)
 * [Citation](#citation)
 * [Acknowledgements](#acknowledgements)
 
@@ -101,6 +104,10 @@ benchmark| MAE | RMSE |link|
 :---:|:---:|:---:|:---:|
 FSC147 | 11.95 (Test set) | 91.23 (Test set) |[weights]() 
 CARPK | 5.75 | 7.45 |[weights]()
+
+### Visualisation
+
+![result](img/goodpred.png)
 
 ### Citation
 
