@@ -24,7 +24,7 @@ Please visit following links to download datasets:
 
 * [CARPK](https://lafi.github.io/LPN/)
 
-In fact, we use CARPK by importing hub package. Please click * [here](https://docs.activeloop.ai/datasets/carpk-dataset).
+In fact, we use CARPK by importing hub package. Please click [here](https://docs.activeloop.ai/datasets/carpk-dataset) for more information.
 
 #### 2. Download required python packages:
 
