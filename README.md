@@ -107,7 +107,7 @@ CUDA_VISIBLE_DEVICES=0 nohup python -u FSC_test_CARPK.py >>./test.log 2>&1 &
 benchmark| MAE | RMSE |link|
 :---:|:---:|:---:|:---:|
 FSC147 | 11.95 (Test set) | 91.23 (Test set) |[weights]() 
-CARPK | 5.75 | 7.45 |[weights]()
+CARPK | 5.75 | 7.45 |[weights](https://drive.google.com/file/d/1f0yy4pLAdtR7CL1OzMF123wiHgJ8KpPS/view?usp=sharing)
 
 ### Visualisation
 
