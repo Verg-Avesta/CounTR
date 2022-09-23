@@ -48,7 +48,7 @@ pip3 install hub
 
 ### CounTR Train
 
-Please modify your work directory and dataset directory in the following files.
+Please modify your work directory and dataset directory in the following train files.
 
 |  Task   | model file | train file |
 |  ----  | ----  | ----  |
@@ -83,7 +83,7 @@ CUDA_VISIBLE_DEVICES=0 nohup python -u FSC_finetune_CARPK.py \
 
 ### CounTR Inference
 
-Please modify your work directory and dataset directory in the following files.
+Please modify your work directory and dataset directory in the following test files.
 
 |  Task   | model file | test file |
 |  ----  | ----  | ----  |
