@@ -115,7 +115,14 @@ CARPK | 5.75 | 7.45 |[weights](https://drive.google.com/file/d/1f0yy4pLAdtR7CL1O
 
 ### Citation
 
-Will be soon released.
+```
+@article{liu2022countr,
+  author = {Chang, Liu and Yujie, Zhong and Andrew, Zisserman and Weidi, Xie},
+  title = {ReCo: Retrieve and Co-segment for Zero-shot Transfer},
+  journal = {arXiv:2208.13721},
+  year = {2022}
+}
+```
 
 ### Acknowledgements
 
