@@ -104,6 +104,12 @@ Test on CARPK
 CUDA_VISIBLE_DEVICES=0 nohup python -u FSC_test_CARPK.py >>./test.log 2>&1 &
 ```
 
+Also, demo.py is a small demo used for testing on a single image.
+
+```
+CUDA_VISIBLE_DEVICES=0 python demo.py
+```
+
 ### Pre-trained weights
 
 benchmark| MAE | RMSE |link|
