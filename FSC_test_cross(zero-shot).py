@@ -147,7 +147,7 @@ class TestData(Dataset):
             if cnt>3:
                 break
             box2 = [int(k) for k in box]
-            y1, x1, y2, x2 = box2[0], int(box2[1]*scale_factor), box2[2], int(box2[3]*scale_factor)
+            y1, x1, y2, x2 = box2[0], box2[1], box2[2], box2[3]
             bbox = image[:,y1:y2+1,x1:x2+1]
             bbox = transforms.Resize((64, 64))(bbox)
             boxes.append(bbox.numpy())
