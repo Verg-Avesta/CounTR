@@ -13,7 +13,7 @@ Official PyTorch implementation for CounTR. Details can be found in the paper.
 * [Preparation](#preparation)
 * [CounTR train](#countr-train)
 * [CounTR inference](#countr-inference)
-* [Pre-trained weights](#pre-trained-weights)
+* [Fine-tuned weights](#fine-tuned-weights)
 * [Visualisation](#visualisation)
 * [Citation](#citation)
 * [Acknowledgements](#acknowledgements)
@@ -110,7 +110,7 @@ Also, demo.py is a small demo used for testing on a single image.
 CUDA_VISIBLE_DEVICES=0 python demo.py
 ```
 
-### Pre-trained weights
+### Fine-tuned weights
 
 benchmark| MAE | RMSE |link|
 :---:|:---:|:---:|:---:|
