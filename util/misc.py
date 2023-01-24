@@ -15,11 +15,16 @@ import os
 import time
 from collections import defaultdict, deque
 from pathlib import Path
+from typing import Union
 
+import numpy as np
+import pandas as pd
 import torch
 import torch.distributed as dist
 from torch._six import inf
 import timm
+import matplotlib.pyplot as plt
+from torchvision import transforms
 
 
 class SmoothedValue(object):
@@ -327,7 +332,7 @@ def load_model(args, model_without_ddp, optimizer, loss_scaler):
         if 'decoder_pos_embed' in checkpoint['model'] and checkpoint['model']['decoder_pos_embed'].shape != model_without_ddp.state_dict()['decoder_pos_embed'].shape:
             print(f"Removing key decoder_pos_embed from pretrained checkpoint")
             del checkpoint['model']['decoder_pos_embed']
-            
+
         model_without_ddp.load_state_dict(checkpoint['model'], strict=False)
         print("Resume checkpoint %s" % args.resume)
         if 'optimizer' in checkpoint and 'epoch' in checkpoint and not (hasattr(args, 'eval') and args.eval):
@@ -348,7 +353,7 @@ def load_model_FSC(args, model_without_ddp):
         if 'pos_embed' in checkpoint['model'] and checkpoint['model']['pos_embed'].shape != model_without_ddp.state_dict()['pos_embed'].shape:
             print(f"Removing key pos_embed from pretrained checkpoint")
             del checkpoint['model']['pos_embed']
-            
+
         model_without_ddp.load_state_dict(checkpoint['model'], strict=False)
         print("Resume checkpoint %s" % args.resume)
 
@@ -368,11 +373,11 @@ def load_model_FSC1(args, model_without_ddp):
             del checkpoint['model']['pos_embed']
 
         del checkpoint1['cls_token'],checkpoint1['pos_embed']
-            
+
         model_without_ddp.load_state_dict(checkpoint['model'], strict=False)
         model_without_ddp.load_state_dict(checkpoint1, strict=False)
         print("Resume checkpoint %s" % args.resume)
-        
+
 
 def all_reduce_mean(x):
     world_size = get_world_size()
@@ -383,3 +388,70 @@ def all_reduce_mean(x):
         return x_reduce.item()
     else:
         return x
+
+
+def plot_counts(res_csv: Union[str, list[str]], output_dir: str, suffix: str = "", smooth: bool = False):
+    if suffix:
+        suffix = f"_{suffix}"
+    if smooth:
+        suffix = f"_smooth{suffix}"
+    if type(res_csv) == str:
+        res_csv = [res_csv]
+
+    plt.figure(figsize=(15, 5))
+
+    for res in res_csv:
+        name = Path(res).parent.name
+        df = pd.read_csv(res)
+        print(df)
+
+        df.sort_values(by="name", inplace=True)
+        df.reset_index(drop=True, inplace=True)
+        df.index += 1
+        print(df)
+
+        if smooth:
+            time_arr = df.index[5:-5]
+            smooth_pred_mean = df['prediction'].iloc[5:-5].rolling(25).mean()
+            smooth_pred_std = df['prediction'].iloc[5:-5].rolling(25).std()
+            plt.plot(time_arr, smooth_pred_mean, label=name)
+            plt.fill_between(time_arr, smooth_pred_mean + smooth_pred_std, smooth_pred_mean - smooth_pred_std, alpha=.2)
+            plt.xlabel('Frame')
+            plt.ylabel('Count')
+        else:
+            plt.plot(df.index, df['prediction'], label=name)
+
+    plt.legend()
+    plt.savefig(os.path.join(output_dir, f'counts{suffix}.png'), dpi=300)
+
+
+def write_zeroshot_annotations(p: Path):
+    with open(p / 'annotations.json', 'a') as split:
+        split.write('{\n')
+        for img in p.iterdir():
+            if img.is_file():
+                split.write(f'  "{img.name}": {{\n' +
+                            '    "H": 960,\n' +
+                            '    "W": 1280,\n' +
+                            '    "box_examples_coordinates": [],\n' +
+                            '    "points": []\n' +
+                            '  },\n')
+        split.write("}")
+
+    with open(p / 'split.json', 'a') as split:
+        split.write('{\n  "test":\n  [\n')
+        for img in p.iterdir():
+            if img.is_file():
+                split.write(f'    "{img.name}",\n')
+        split.write("  ]\n}")
+
+
+def make_grid(imgs, h, w):
+    assert len(imgs) == 9
+    rows = []
+    for i in range(0, 9, 3):
+        row = torch.cat((imgs[i], imgs[i + 1], imgs[i + 2]), -1)
+        rows += [row]
+    grid = torch.cat((rows[0], rows[1], rows[2]), 0)
+    grid = transforms.Resize((h, w))(grid.unsqueeze(0))
+    return grid.squeeze(0)
