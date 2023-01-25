@@ -1,10 +1,14 @@
+import time
 from functools import partial
 import math
+import random
+
 import numpy as np
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision.utils
 
 from timm.models.vision_transformer import PatchEmbed, Block
 from models_crossvit import CrossAttentionBlock
@@ -194,6 +198,8 @@ class SupervisedMAE(nn.Module):
         return x
 
     def forward(self, imgs, boxes, shot_num):
+        # if boxes.nelement() > 0:
+        #     torchvision.utils.save_image(boxes[0], f"data/out/crops/box_{time.time()}_{random.randint(0, 99999):>5}.png")
         with torch.no_grad():
             latent = self.forward_encoder(imgs)
         pred = self.forward_decoder(latent, boxes, shot_num)  # [N, 384, 384]
