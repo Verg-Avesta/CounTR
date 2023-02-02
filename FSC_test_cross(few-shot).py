@@ -59,7 +59,7 @@ def get_args_parser():
                         help='epochs to warmup LR')
 
     # Dataset parameters
-    parser.add_argument('--data_path', default='/GPFS/data/changliu/FSC147/', type=str,
+    parser.add_argument('--data_path', default='./data/FSC147/', type=str,
                         help='dataset path')
     parser.add_argument('--anno_file', default='annotation_FSC147_384.json', type=str,
                         help='annotation json file')
@@ -134,8 +134,8 @@ class TestData(Dataset):
                     for bbox in bboxes:
                         x1 = int(bbox[0][0] * scale_factor_W)
                         y1 = int(bbox[0][1] * scale_factor_H)
-                        x2 = int(bbox[1][0] * scale_factor_W)
-                        y2 = int(bbox[1][1] * scale_factor_H)
+                        x2 = int(bbox[2][0] * scale_factor_W)
+                        y2 = int(bbox[2][1] * scale_factor_H)
                         rects.append([y1, x1, y2, x2])
 
                     for box in rects:
@@ -179,8 +179,8 @@ class TestData(Dataset):
             for bbox in bboxes:
                 x1 = int(bbox[0][0] * scale_factor_W)
                 y1 = int(bbox[0][1] * scale_factor_H)
-                x2 = int(bbox[1][0] * scale_factor_W)
-                y2 = int(bbox[1][1] * scale_factor_H)
+                x2 = int(bbox[2][0] * scale_factor_W)
+                y2 = int(bbox[2][1] * scale_factor_H)
                 rects.append([y1, x1, y2, x2])
 
             for box in rects:
@@ -267,7 +267,7 @@ def main(args):
     model.eval()
     metric_logger = misc.MetricLogger(delimiter="  ")
     header = 'Epoch: [{}]'.format(epoch)
-    print_freq = 20
+    print_freq = 100
 
     # some parameters in training
     train_mae = 0
