@@ -8,3 +8,5 @@
 !/data/letsea_14/annotations_few.json
 !/data/letsea_14/annotations_zero.json
 !/data/letsea_14/split.json
+/logs/
+/wandb/
