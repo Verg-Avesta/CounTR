@@ -139,6 +139,8 @@ We borrowed the code from
 * [MAE](https://github.com/facebookresearch/mae)
 * [timm](https://timm.fast.ai/)
 
+Thanks @GioFic95 for adding the function of using external exemplars, more predictions images, more parametrized inference and so on.
+
 If you have any questions about our code implementation, please contact us at liuchang666@sjtu.edu.cn
 
 
