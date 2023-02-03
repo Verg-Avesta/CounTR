@@ -21,6 +21,7 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.distributed as dist
+import wandb
 from torch._six import inf
 import timm
 import matplotlib.pyplot as plt
@@ -298,11 +299,13 @@ def get_grad_norm_(parameters, norm_type: float = 2.0) -> torch.Tensor:
     return total_norm
 
 
-def save_model(args, epoch, model, model_without_ddp, optimizer, loss_scaler):
+def save_model(args, epoch, model, model_without_ddp, optimizer, loss_scaler, suffix=""):
+    if suffix:
+        suffix = f"__{suffix}"
     output_dir = Path(args.output_dir)
-    epoch_name = str(epoch)
+    ckpt_name = f"checkpoint{suffix}.pth"
     if loss_scaler is not None:
-        checkpoint_paths = [output_dir / ('checkpoint-%s.pth' % epoch_name)]
+        checkpoint_paths = [output_dir / ckpt_name]
         for checkpoint_path in checkpoint_paths:
             to_save = {
                 'model': model_without_ddp.state_dict(),
@@ -311,11 +314,22 @@ def save_model(args, epoch, model, model_without_ddp, optimizer, loss_scaler):
                 'scaler': loss_scaler.state_dict(),
                 'args': args,
             }
-
             save_on_master(to_save, checkpoint_path)
+            log_wandb_model(f"checkpoint{suffix}", checkpoint_path, epoch)
+            print("checkpoint sent to W&B (if)")
     else:
         client_state = {'epoch': epoch}
-        model.save_checkpoint(save_dir=args.output_dir, tag="checkpoint-%s" % epoch_name, client_state=client_state)
+        model.save_checkpoint(save_dir=args.output_dir, tag=ckpt_name, client_state=client_state)
+        log_wandb_model(f"checkpoint{suffix}", output_dir / ckpt_name, epoch)
+        print("checkpoint sent to W&B (else)")
+
+
+def log_wandb_model(title, path, epoch):
+    artifact = wandb.Artifact(title, type="model")
+    artifact.add_file(path)
+    artifact.metadata["epoch"] = epoch
+    wandb.log_artifact(artifact_or_path=artifact, name=title)
+
 
 def load_model(args, model_without_ddp, optimizer, loss_scaler):
     if args.resume:
@@ -430,11 +444,11 @@ def write_zeroshot_annotations(p: Path):
         split.write('{\n')
         for img in p.iterdir():
             if img.is_file():
-                split.write(f'  "{img.name}": {{\n' +
-                            '    "H": 960,\n' +
-                            '    "W": 1280,\n' +
-                            '    "box_examples_coordinates": [],\n' +
-                            '    "points": []\n' +
+                split.write(f'  "{img.name}": {{\n' \
+                            '    "H": 960,\n' \
+                            '    "W": 1280,\n' \
+                            '    "box_examples_coordinates": [],\n' \
+                            '    "points": []\n' \
                             '  },\n')
         split.write("}")
 
@@ -455,3 +469,12 @@ def make_grid(imgs, h, w):
     grid = torch.cat((rows[0], rows[1], rows[2]), 0)
     grid = transforms.Resize((h, w))(grid.unsqueeze(0))
     return grid.squeeze(0)
+
+
+def min_max(t):
+    t_shape = t.shape
+    t = t.view(t_shape[0], -1)
+    t -= t.min(1, keepdim=True)[0]
+    t /= t.max(1, keepdim=True)[0]
+    t = t.view(*t_shape)
+    return t
