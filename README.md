@@ -126,10 +126,10 @@ CARPK | 5.75 | 7.45 |[weights](https://drive.google.com/file/d/1f0yy4pLAdtR7CL1O
 ### Citation
 
 ```
-@article{liu2022countr,
+@inproceedings{liu2022countr,
   author = {Chang, Liu and Yujie, Zhong and Andrew, Zisserman and Weidi, Xie},
   title = {CounTR: Transformer-based Generalised Visual Counting},
-  journal = {arXiv:2208.13721},
+  booktitle={British Machine Vision Conference (BMVC)},
   year = {2022}
 }
 ```
