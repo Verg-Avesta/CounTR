@@ -25,6 +25,9 @@ import wandb
 from torch._six import inf
 import matplotlib.pyplot as plt
 from torchvision import transforms
+import cv2
+from tqdm import tqdm
+
 
 class SmoothedValue(object):
     """Track a series of values and provide access to smoothed values over a
@@ -543,9 +546,6 @@ def log_test_results(test_dir):
     cols = list(df.columns)
     cols = cols[-1:] + cols[:-1]
     df = df[cols]
-    # idx = df.index.tolist()
-    # idx.pop(0)
-    # df = df.reindex(idx+[0])
 
     df.to_csv(test_dir / "logs.csv", index=False)
 
@@ -601,3 +601,17 @@ def plot_test_results(test_dir):
     fig.update_yaxes(type="log")
     fig.write_image(test_dir / "plot.jpeg", scale=4)
     fig.write_html(test_dir / "plot.html", auto_open=False)
+
+
+def frames_to_video(input_dir: str, output_file: str, pattern: str, fps: int):
+    input_dir = Path(input_dir)
+    video_file = None
+    files = list(input_dir.glob(pattern))
+    for i, img in enumerate(tqdm(files, total=len(files))):
+        frame = cv2.imread(str(img))
+        if i == 0:
+            h, w, _ = frame.shape
+            video_file = cv2.VideoWriter(output_file, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
+        video_file.write(frame)
+
+    video_file.release()
