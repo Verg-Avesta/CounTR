@@ -603,7 +603,7 @@ def plot_test_results(test_dir):
     fig.write_html(test_dir / "plot.html", auto_open=False)
 
 
-def frames_to_video(input_dir: str, output_file: str, pattern: str, fps: int):
+def frames2vid(input_dir: str, output_file: str, pattern: str, fps: int):
     input_dir = Path(input_dir)
     video_file = None
     files = list(input_dir.glob(pattern))
