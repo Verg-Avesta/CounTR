@@ -81,7 +81,7 @@ def run_one_image(samples, boxes, model, output_path, img_name, old_w, old_h):
     draw.text((w-70, h-50), f"{pred_cnt:.3f}", (255, 255, 255))
     count_im = np.array(count_im).transpose((2, 0, 1))
     count_im = torch.tensor(count_im, device=device)
-    fig = fig * 0.5 + pred_fig / 2 + count_im
+    fig = fig / 2 + pred_fig / 2 + count_im
     fig = torch.clamp(fig, 0, 1)
     fig = transforms.Resize((old_h, old_w))(fig)
     torchvision.utils.save_image(fig, output_path / f'viz_{img_name}.jpg')

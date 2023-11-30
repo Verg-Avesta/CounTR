@@ -507,6 +507,24 @@ def min_max(t):
     return t
 
 
+def min_max_np(v, new_min=0, new_max=1):
+    v_min, v_max = v.min(), v.max()
+    return (v - v_min) / (v_max - v_min) * (new_max - new_min) + new_min
+
+
+def get_box_map(sample, pos, device, external=False):
+    box_map = torch.zeros([sample.shape[1], sample.shape[2]], device=device)
+    if external is False:
+        for rect in pos:
+            for i in range(rect[2] - rect[0]):
+                box_map[min(rect[0] + i, sample.shape[1] - 1), min(rect[1], sample.shape[2] - 1)] = 10
+                box_map[min(rect[0] + i, sample.shape[1] - 1), min(rect[3], sample.shape[2] - 1)] = 10
+            for i in range(rect[3] - rect[1]):
+                box_map[min(rect[0], sample.shape[1] - 1), min(rect[1] + i, sample.shape[2] - 1)] = 10
+                box_map[min(rect[2], sample.shape[1] - 1), min(rect[1] + i, sample.shape[2] - 1)] = 10
+        box_map = box_map.unsqueeze(0).repeat(3, 1, 1)
+    return box_map
+
 
 timerfunc = time.perf_counter
 
@@ -606,7 +624,7 @@ def plot_test_results(test_dir):
 def frames2vid(input_dir: str, output_file: str, pattern: str, fps: int):
     input_dir = Path(input_dir)
     video_file = None
-    files = list(input_dir.glob(pattern))
+    files = sorted(input_dir.glob(pattern))
     for i, img in enumerate(tqdm(files, total=len(files))):
         frame = cv2.imread(str(img))
         if i == 0:
