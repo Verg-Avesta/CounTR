@@ -151,7 +151,7 @@ class TrainData(Dataset):
 
         sample = {'image': image, 'lines_boxes': rects, 'dots': dots, 'id': im_id, 'm_flag': m_flag}
         sample = self.TransformTrain(sample) if self.split == "train" else self.TransformVal(sample)
-        return sample['image'], sample['gt_density'], len(dots), sample['boxes'], sample['m_flag'], im_id
+        return sample['image'], sample['gt_density'], len(dots), sample['boxes'], sample['pos'], sample['m_flag'], im_id
 
 
 def main(args):
@@ -213,7 +213,7 @@ def main(args):
         model = models_mae_cross.__dict__[args.model](norm_pix_loss=args.norm_pix_loss)
         model.to(device)
         model_without_ddp = model
-        print("Model = %s" % str(model_without_ddp))
+        # print("Model = %s" % str(model_without_ddp))
 
         eff_batch_size = args.batch_size * args.accum_iter * misc.get_world_size()
 
@@ -238,8 +238,8 @@ def main(args):
         loss_scaler = NativeScaler()
 
         min_MAE = 99999
-        print_freq = 2  # 50
-        save_freq = 2  # 50
+        print_freq = 50
+        save_freq = 50
 
         misc.load_model_FSC_full(args=args, model_without_ddp=model_without_ddp, optimizer=optimizer, loss_scaler=loss_scaler)
 
@@ -262,7 +262,7 @@ def main(args):
 
             optimizer.zero_grad()
 
-            for data_iter_step, (samples, gt_density, _, boxes, m_flag, im_names) in enumerate(
+            for data_iter_step, (samples, gt_density, _, boxes, pos, m_flag, im_names) in enumerate(
                     tqdm(data_loader_train, total=len(data_loader_train),
                          desc=f"Train [e. {epoch} - r. {global_rank}]")):
                 idx = data_iter_step + (epoch*len(data_loader_train))
@@ -326,7 +326,7 @@ def main(args):
                         wandb.log(log, step=idx)
 
             # evaluation on Validation split
-            for val_samples, val_gt_density, val_n_ppl, val_boxes, _, val_im_names in \
+            for val_samples, val_gt_density, val_n_ppl, val_boxes, val_pos, _, val_im_names in \
                 tqdm(data_loader_val, total=len(data_loader_val),
                      desc=f"Val [e. {epoch} - r. {global_rank}]"):
 
@@ -358,29 +358,35 @@ def main(args):
                 black = torch.zeros([384, 384], device=device)
 
                 for i in range(output.shape[0]):
-                    fig = torch.stack([output[i], black, black])
-                    f1 = torch.stack([gt_density[i], black, black])
-                    w_gt_density = samples[i] / 2 + f1
-                    w_d_map = fig
-                    w_d_map_overlay = samples[i] / 2 + fig
+                    # gt and predicted density
+                    w_d_map = torch.stack([output[i], black, black])
+                    gt_map = torch.stack([gt_density[i], black, black])
+                    box_map = misc.get_box_map(samples[i], pos[i], device)
+                    w_gt_density = samples[i] / 2 + gt_map + box_map
+                    w_d_map_overlay = samples[i] / 2 + w_d_map
                     w_densities = torch.cat([w_gt_density, w_d_map, w_d_map_overlay], dim=2)
                     w_densities = torch.clamp(w_densities, 0, 1)
                     train_wandb_densities += [wandb.Image(torchvision.transforms.ToPILImage()(w_densities),
                                                           caption=f"[E#{epoch}] {im_names[i]} ({torch.sum(gt_density[i]).item()}, {torch.sum(output[i]).item()})")]
+
+                    # exemplars
                     w_boxes = torch.cat([boxes[i][x, :, :, :] for x in range(boxes[i].shape[0])], 2)
                     train_wandb_bboxes += [wandb.Image(torchvision.transforms.ToPILImage()(w_boxes),
                                                        caption=f"[E#{epoch}] {im_names[i]}")]
 
                 for i in range(val_output.shape[0]):
-                    fig = torch.stack([val_output[i], black, black])
-                    f1 = torch.stack([val_gt_density[i], black, black])
-                    w_gt_density = val_samples[i] / 2 + f1
-                    w_d_map = fig
-                    w_d_map_overlay = val_samples[i] / 2 + fig
+                    # gt and predicted density
+                    w_d_map = torch.stack([val_output[i], black, black])
+                    gt_map = torch.stack([val_gt_density[i], black, black])
+                    box_map = misc.get_box_map(val_samples[i], val_pos[i], device)
+                    w_gt_density = val_samples[i] / 2 + gt_map + box_map
+                    w_d_map_overlay = val_samples[i] / 2 + w_d_map
                     w_densities = torch.cat([w_gt_density, w_d_map, w_d_map_overlay], dim=2)
                     w_densities = torch.clamp(w_densities, 0, 1)
                     val_wandb_densities += [wandb.Image(torchvision.transforms.ToPILImage()(w_densities),
                                                         caption=f"[E#{epoch}] {val_im_names[i]} ({torch.sum(val_gt_density[i]).item()}, {torch.sum(val_output[i]).item()})")]
+
+                    # exemplars
                     w_boxes = torch.cat([val_boxes[i][x, :, :, :] for x in range(val_boxes[i].shape[0])], 2)
                     val_wandb_bboxes += [wandb.Image(torchvision.transforms.ToPILImage()(w_boxes),
                                                      caption=f"[E#{epoch}] {val_im_names[i]}")]

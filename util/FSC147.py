@@ -267,6 +267,7 @@ class ResizeTrainImage(ResizeSomeImage):
 
         # Crop bboxes and resize as 64x64
         boxes = list()
+        rects = list()
         cnt = 0
         for box in lines_boxes:
             cnt += 1
@@ -277,13 +278,19 @@ class ResizeTrainImage(ResizeSomeImage):
             x1 = int(box2[1] * scale_factor_w)
             y2 = int(box2[2] * scale_factor_h)
             x2 = int(box2[3] * scale_factor_w)
+            if not aug_flag:
+                rects.append(torch.tensor([y1, max(0, x1-start), y2, min(self.max_hw, x2-start)]))
             bbox = resized_image[:, y1:y2 + 1, x1:x2 + 1]
             bbox = transforms.Resize((64, 64))(bbox)
             boxes.append(bbox)
         boxes = torch.stack(boxes)
+        if aug_flag:
+            pos = torch.tensor([])
+        else:
+            pos = torch.stack(rects)
 
         # boxes shape [3,3,64,64], image shape [3,384,384], density shape[384,384]
-        sample = {'image': reresized_image, 'boxes': boxes, 'gt_density': reresized_density, 'm_flag': m_flag}
+        sample = {'image': reresized_image, 'boxes': boxes, 'pos': pos, 'gt_density': reresized_density, 'm_flag': m_flag}
 
         return sample
 
@@ -314,6 +321,7 @@ class ResizeValImage(ResizeSomeImage):
 
         # Crop bboxes and resize as 64x64
         boxes = list()
+        rects = list()
         cnt = 0
         for box in lines_boxes:
             cnt += 1
@@ -324,13 +332,15 @@ class ResizeValImage(ResizeSomeImage):
             x1 = int(box2[1] * scale_factor_w)
             y2 = int(box2[2] * scale_factor_h)
             x2 = int(box2[3] * scale_factor_w)
+            rects.append(torch.tensor([y1, x1, y2, x2]))
             bbox = resized_image[:, y1:y2 + 1, x1:x2 + 1]
             bbox = transforms.Resize((64, 64))(bbox)
             boxes.append(bbox)
         boxes = torch.stack(boxes)
+        pos = torch.stack(rects)
 
         # boxes shape [3,3,64,64], image shape [3,384,384], density shape[384,384]
-        sample = {'image': resized_image, 'boxes': boxes, 'gt_density': resized_density, 'm_flag': m_flag}
+        sample = {'image': resized_image, 'boxes': boxes, 'pos': pos, 'gt_density': resized_density, 'm_flag': m_flag}
         return sample
 
 
