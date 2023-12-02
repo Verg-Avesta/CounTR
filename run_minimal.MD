@@ -121,4 +121,45 @@ Without providing the ground truth density maps:
 ```
 python 'FSC_test_cross(few-shot).py' --data_path data/fsc --anno_file annotations_ext_noGT.json --data_split_file train_test_val.json --im_dir images --output_dir results/test_ext_noGT --resume weights/FSC147.pth --box_bound 3 --external
 ```
-In this way the metrics won't be meaningful but it is possible to try the model on new images with 
+In this way the metrics won't be meaningful but it is possible to try the model on new images without the need of labeling them. That is, like similarly to `demo_zero.py`, but you can provide exemplars in the json annotations file.
+
+&nbsp;
+
+
+### Plot test results
+
+1. Install libraries needed for the plots, possibly in a virual environment:
+    ```
+    pip install plotly
+    pip install kaleido==0.1.0.post1
+    ```
+    (other versions of kaleido may work for you, this is what I tested)
+
+2. Go to the `util` directory and launch your Python interpreter:
+    ```bash
+    cd util
+    python
+    ```
+
+3. From within Python:
+    ```python
+    import misc
+    misc.log_test_results("../results")
+    misc.plot_test_results("../results")
+    ```
+
+The resulting plot, saved in the same directory as the results (in our case, `../results`), shows the performance of CounTR according to the three logged metrics (MAE, RMSE, NAE) along the whole set of experiments. It is particularly useful if your experiments are ordered (e.g., you test your model at different steps along the training, or after some modification you applied).
+
+Note that I removed `test_ext_noGT` from the results used for the plot, since without the ground truth the metrics cannot be meaningful.
+
+&nbsp;
+
+
+### Make a video from the output of the demo
+
+Steps 1 and 2 are the same as the previous example, then:
+
+```python
+import misc
+misc.frames2vid("../results/demo_zero_dir", "../results/demo.mp4", "viz*.jpg", 3)
+```

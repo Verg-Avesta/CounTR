@@ -550,12 +550,11 @@ def log_test_results(test_dir):
     test_dir = Path(test_dir)
     logs = []
     for d in test_dir.iterdir():
-        if d.is_dir():
-            if not (d / "log.txt").exists():
-                continue
+        if d.is_dir() and (d / "log.txt").exists():
             print(d.name)
             with open(d / "log.txt") as f:
-                j = json.load(f)
+                last = f.readlines()[-1]
+                j = json.loads(last)
                 j['name'] = d.name
                 logs.append(j)
     df = pd.DataFrame(logs)
@@ -588,48 +587,32 @@ COLORS = {
 
 def plot_test_results(test_dir):
     import plotly.graph_objects as go
-    import plotly.io as pio
 
     test_dir = Path(test_dir)
     df = pd.read_csv(test_dir / "logs.csv")
-    # pio.renderers.default = "jpeg"
-
-    df['epoch'] = df['name'].str.split("_").str[1]
-    df_val = df[df['name'].str.contains("val")]
-    df_test = df[df['name'].str.contains("test")]
+    df.sort_values('name', inplace=True)
 
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df_test['epoch'], y=df_test['MAE'], line_color=COLORS['muted blue'],
-                        mode='lines', name='MAE_test'))
-    fig.add_trace(go.Scatter(x=df_test['epoch'], y=df_test['RMSE'], line_color=COLORS['safety orange'],
-                        mode='lines', name='RMSE_test'))
-    fig.add_trace(go.Scatter(x=df_test['epoch'], y=df_test['NAE'], line_color=COLORS['cooked asparagus green'],
-                        mode='lines', name='NAE_test'))
-    fig.add_trace(go.Scatter(x=df_test['epoch'], y=df_test['PPMAE'], line_color=COLORS['brick red'],
-                        mode='lines', name='PPMAE_test'))
+    fig.add_trace(go.Scatter(x=df['name'], y=df['MAE'], line_color=COLORS['muted blue'],
+                        mode='lines', name='MAE'))
+    fig.add_trace(go.Scatter(x=df['name'], y=df['RMSE'], line_color=COLORS['safety orange'],
+                        mode='lines', name='RMSE'))
+    fig.add_trace(go.Scatter(x=df['name'], y=df['NAE'], line_color=COLORS['cooked asparagus green'],
+                        mode='lines', name='NAE'))
 
-    fig.add_trace(go.Scatter(x=df_val['epoch'], y=df_val['MAE'], line_color=COLORS['muted blue light'],
-                        mode='lines', name='MAE_val', line=dict(dash='dot')))
-    fig.add_trace(go.Scatter(x=df_val['epoch'], y=df_val['RMSE'], line_color=COLORS['safety orange light'],
-                        mode='lines', name='RMSE_val', line=dict(dash='dot')))
-    fig.add_trace(go.Scatter(x=df_val['epoch'], y=df_val['NAE'], line_color=COLORS['cooked asparagus green light'],
-                        mode='lines', name='NAE_val', line=dict(dash='dot')))
-    fig.add_trace(go.Scatter(x=df_val['epoch'], y=df_val['PPMAE'], line_color=COLORS['brick red light'],
-                        mode='lines', name='PPMAE_val', line=dict(dash='dot')))
     fig.update_yaxes(type="log")
     fig.write_image(test_dir / "plot.jpeg", scale=4)
     fig.write_html(test_dir / "plot.html", auto_open=False)
 
 
-def frames2vid(input_dir: str, output_file: str, pattern: str, fps: int):
+def frames2vid(input_dir: str, output_file: str, pattern: str, fps: int, h=720, w=1280):
     input_dir = Path(input_dir)
     video_file = None
     files = sorted(input_dir.glob(pattern))
-    for i, img in enumerate(tqdm(files, total=len(files))):
+    video_file = cv2.VideoWriter(output_file, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
+    for img in tqdm(files, total=len(files)):
         frame = cv2.imread(str(img))
-        if i == 0:
-            h, w, _ = frame.shape
-            video_file = cv2.VideoWriter(output_file, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
+        frame = cv2.resize(frame, (w, h))
         video_file.write(frame)
 
     video_file.release()
