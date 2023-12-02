@@ -48,6 +48,7 @@ def run_one_image(samples, boxes, model, output_path, img_name, old_w, old_h):
     with measure_time() as et:
         with torch.no_grad():
             while start + 383 < w:
+                print("inference", start)
                 output, = model(samples[:, :, :, start:start + 384], boxes, shot_num)
                 output = output.squeeze(0)
                 b1 = nn.ZeroPad2d(padding=(start, w - prev - 1, 0, 0))
@@ -72,6 +73,8 @@ def run_one_image(samples, boxes, model, output_path, img_name, old_w, old_h):
                         start = w - 384
 
         pred_cnt = torch.sum(density_map / 60).item()
+
+    print("visualization")
 
     # Visualize the prediction
     fig = samples[0]
@@ -105,7 +108,7 @@ if __name__ == '__main__':
 
     checkpoint = torch.load(args.model_path, map_location='cpu')
     model_without_ddp.load_state_dict(checkpoint['model'], strict=False)
-    print("Resume checkpoint FSC147.pth")
+    print(f"Resume checkpoint {args.model_path}")
 
     model.eval()
 
@@ -123,4 +126,4 @@ if __name__ == '__main__':
         samples = samples.unsqueeze(0).to(device, non_blocking=True)
         boxes = boxes.unsqueeze(0).to(device, non_blocking=True)
         result, elapsed_time = run_one_image(samples, boxes, model, args.output_path, args.input_path.stem, old_w, old_h)
-        print(result, elapsed_time.duration)
+        print("Count:", result, "- Time:", elapsed_time.duration)

@@ -1,5 +1,6 @@
 **.ini
 **.pth
+**.zip
 **__pycache__
 .idea/
 /data/
