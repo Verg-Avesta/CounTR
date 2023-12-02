@@ -30,8 +30,7 @@ root
 +---img
 ¦       
 +---util
-¦           
-+---env
+¦
 +---weights
 ¦       FSC147.pth
 ¦       
