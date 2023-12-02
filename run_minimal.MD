@@ -3,7 +3,7 @@
 Here you can find a zip folder with data and weights used in the following examples and their results:
 https://drive.google.com/file/d/134ac1x381PsaC3Y6RFXQWzpmlSzaoc3X/view?usp=sharing.
 
-Here is the W&B report relative to the finetuning examples:
+Here is the W&B report relative to the fine-tuning examples:
 https://api.wandb.ai/links/giovanni-ficarra/ilxvm4to.
 
 This should be the resulting structure of the directory, extracting the files from the zip folder into the root of the repository:
@@ -55,9 +55,9 @@ root
 &nbsp;
 
 
-## Commands to run finetuning and testing in different fashions, based on the new and updated parameters
+## Commands to run fine-tuning and testing in different fashions, based on the new and updated parameters
 
-### Finetuning with data augmentation
+### Fine-tuning with data augmentation
 
 The `--do_aug` parameter is by default `True`.
 ```
@@ -65,7 +65,7 @@ python -W ignore FSC_finetune_cross.py --epochs 5 --batch_size 4 --lr 1e-5 --out
 ```
 &nbsp;
 
-### Finetuning senza data augmentation
+### Fine-tuning without data augmentation
 
 With the `--no_do_aug` parameter you can disable data augmentation.
 ```
@@ -75,7 +75,7 @@ python -W ignore FSC_finetune_cross.py --epochs 5 --batch_size 4 --lr 1e-5 --out
 
 ### Zero-shot demo
 
-With `demo_zero.py` you can test CounTR on your own data in an easy manner without providing any exemplar, just an input file or directory. Forr each input image, it will print the number of counted objects and the elapsed time.
+With `demo_zero.py` you can test CounTR on your own data in an easy manner without providing any exemplar, just an input file or directory. For each input image, it will print the number of counted objects and the elapsed time.
 
 With a single file:
 ```
@@ -128,7 +128,7 @@ In this way the metrics won't be meaningful but it is possible to try the model 
 
 ### Plot test results
 
-1. Install libraries needed for the plots, possibly in a virual environment:
+1. Install libraries needed for the plots, possibly in a virtual environment:
     ```
     pip install plotly
     pip install kaleido==0.1.0.post1
@@ -163,3 +163,5 @@ Steps 1 and 2 are the same as the previous example, then:
 import misc
 misc.frames2vid("../results/demo_zero_dir", "../results/demo.mp4", "viz*.jpg", 3)
 ```
+
+It is particularly useful if you are testing CounTR on a sequence of frames.
