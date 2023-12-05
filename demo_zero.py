@@ -48,7 +48,6 @@ def run_one_image(samples, boxes, model, output_path, img_name, old_w, old_h):
     with measure_time() as et:
         with torch.no_grad():
             while start + 383 < w:
-                print("inference", start)
                 output, = model(samples[:, :, :, start:start + 384], boxes, shot_num)
                 output = output.squeeze(0)
                 b1 = nn.ZeroPad2d(padding=(start, w - prev - 1, 0, 0))
@@ -73,8 +72,6 @@ def run_one_image(samples, boxes, model, output_path, img_name, old_w, old_h):
                         start = w - 384
 
         pred_cnt = torch.sum(density_map / 60).item()
-
-    print("visualization")
 
     # Visualize the prediction
     fig = samples[0]
