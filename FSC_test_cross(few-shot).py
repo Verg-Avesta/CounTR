@@ -257,7 +257,6 @@ def main(args):
             boxes = boxes.to(device, non_blocking=True)
             num_boxes = boxes.shape[1] if boxes.nelement() > 0 else 0
             _, _, h, w = samples.shape
-            print("num_boxes", num_boxes, args.box_bound)
 
             r_cnt = 0
             s_cnt = 0
@@ -382,12 +381,13 @@ def main(args):
         pred_img = torch.cat((pred_img, torch.zeros_like(pred_img), torch.zeros_like(pred_img)))
 
         den_gt = Image.new(mode="RGB", size=(w, h), color=(0, 0, 0))
-        draw = ImageDraw.Draw(den_gt)
-        draw.text((w-50, h-50), f"{gt_cnt:.3f}", (255, 255, 255))
-        den_gt = np.array(den_gt).transpose((2, 0, 1))
-        den_gt = torch.tensor(np.array(den_gt), device=device)
-        den_gt = sam * 0.6 + den_gt + gt_img
-        den_gt = torch.clamp(den_gt, 0, 1)
+        if gt_cnt != 0:
+            draw = ImageDraw.Draw(den_gt)
+            draw.text((w-50, h-50), f"{gt_cnt:.3f}", (255, 255, 255))
+            den_gt = np.array(den_gt).transpose((2, 0, 1))
+            den_gt = torch.tensor(np.array(den_gt), device=device)
+            den_gt = sam * 0.6 + den_gt + gt_img
+            den_gt = torch.clamp(den_gt, 0, 1)
 
         sam_box = torch.clamp(sam + box_map, 0, 1)
 
@@ -399,7 +399,10 @@ def main(args):
         den_pr = sam * 0.6 + den_pr + pred_img
         den_pr = torch.clamp(den_pr, 0, 1)
 
-        full = torch.cat((den_gt, sam_box, den_pr), -1)
+        if gt_cnt != 0:
+            full = torch.cat((den_gt, sam_box, den_pr), -1)
+        else:
+            full = torch.cat((sam_box, den_pr), -1)
         torchvision.utils.save_image(full, (os.path.join(args.output_dir, f'full_{im_name.stem}__{round(pred_cnt)}{im_name.suffix}')))
 
         # if args.external:
@@ -418,7 +421,10 @@ def main(args):
 
     print("\nAverage stats:")
     print(", ".join([f"{k}: {v:5.3f}" for k, v in log_stats.items()]))
-    print("empty images:", len(empties), empties)
+    if len(empties) != len(data_loader_test):
+        print("empty images:", len(empties), empties)
+    else:
+        print("empty images:", len(empties), "(all)")
 
     if args.output_dir and misc.is_main_process():
         with open(os.path.join(args.output_dir, "log.txt"), mode="a", encoding="utf-8") as f:

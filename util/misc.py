@@ -466,22 +466,22 @@ def plot_counts(res_csv: Union[str, list[str]], output_dir: str, suffix: str = "
     plt.savefig(os.path.join(output_dir, f'counts{suffix}.png'), dpi=300)
 
 
-def write_zeroshot_annotations(p: Path):
-    with open(p / 'annotations.json', 'a') as split:
-        split.write('{\n')
-        for img in p.iterdir():
+def write_zeroshot_annotations(p: Path, h: int = 960, w: int = 1280):
+    with open(p / 'annotations.json', 'a') as anno:
+        anno.write('{\n')
+        for img in (p / "images").iterdir():
             if img.is_file():
-                split.write(f'  "{img.name}": {{\n' \
-                            '    "H": 960,\n' \
-                            '    "W": 1280,\n' \
+                anno.write(f'  "{img.name}": {{\n' \
+                            f'    "H": {h},\n' \
+                            f'    "W": {w},\n' \
                             '    "box_examples_coordinates": [],\n' \
                             '    "points": []\n' \
                             '  },\n')
-        split.write("}")
+        anno.write("}")
 
     with open(p / 'split.json', 'a') as split:
         split.write('{\n  "test":\n  [\n')
-        for img in p.iterdir():
+        for img in (p / "images").iterdir():
             if img.is_file():
                 split.write(f'    "{img.name}",\n')
         split.write("  ]\n}")
@@ -605,7 +605,7 @@ def plot_test_results(test_dir):
     fig.write_html(test_dir / "plot.html", auto_open=False)
 
 
-def frames2vid(input_dir: str, output_file: str, pattern: str, fps: int, h=720, w=1280):
+def frames2vid(input_dir: str, output_file: str, pattern: str, fps: int = 10, h=720, w=1280):
     input_dir = Path(input_dir)
     video_file = None
     files = sorted(input_dir.glob(pattern))
