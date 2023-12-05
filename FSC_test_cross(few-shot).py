@@ -1,9 +1,7 @@
 import argparse
-import datetime
 import json
 import numpy as np
 import os
-import time
 from pathlib import Path
 from PIL import Image, ImageDraw
 import matplotlib.pyplot as plt
@@ -27,36 +25,15 @@ import models_mae_cross
 
 def get_args_parser():
     parser = argparse.ArgumentParser('MAE pre-training', add_help=False)
-    parser.add_argument('--batch_size', default=1, type=int,
-                        help='Batch size per GPU (effective batch size is batch_size * accum_iter * # gpus')
-    parser.add_argument('--epochs', default=1, type=int)
-    parser.add_argument('--accum_iter', default=1, type=int,
-                        help='Accumulate gradient iterations (for increasing the effective batch size under memory constraints)')
 
     # Model parameters
     parser.add_argument('--model', default='mae_vit_base_patch16', type=str, metavar='MODEL',
                         help='Name of model to train')
-
     parser.add_argument('--mask_ratio', default=0.5, type=float,
                         help='Masking ratio (percentage of removed patches).')
-
     parser.add_argument('--norm_pix_loss', action='store_true',
                         help='Use (per-patch) normalized pixels as targets for computing loss')
     parser.set_defaults(norm_pix_loss=False)
-
-    # Optimizer parameters
-    parser.add_argument('--weight_decay', type=float, default=0.05,
-                        help='weight decay (default: 0.05)')
-
-    parser.add_argument('--lr', type=float, default=None, metavar='LR',
-                        help='learning rate (absolute lr)')
-    parser.add_argument('--blr', type=float, default=1e-3, metavar='LR',
-                        help='base learning rate: absolute_lr = base_lr * total_batch_size / 256')
-    parser.add_argument('--min_lr', type=float, default=0., metavar='LR',
-                        help='lower lr bound for cyclic schedulers that hit 0')
-
-    parser.add_argument('--warmup_epochs', type=int, default=10, metavar='N',
-                        help='epochs to warmup LR')
 
     # Dataset parameters
     parser.add_argument('--data_path', default='./data/FSC147/', type=str,
@@ -69,27 +46,24 @@ def get_args_parser():
                         help='images directory')
     parser.add_argument('--output_dir', default='./Image',
                         help='path where to save, empty for no saving')
-    parser.add_argument('--log_dir', default='./Image',
-                        help='path where to tensorboard log')
     parser.add_argument('--device', default='cuda',
                         help='device to use for training / testing')
     parser.add_argument('--seed', default=0, type=int)
     parser.add_argument('--resume', default='./output_fim6_dir/checkpoint-0.pth',
                         help='resume from checkpoint')
-    parser.add_argument('--external', default=False,
-                        help='True if using external exemplars')
+    parser.add_argument('--external', action='store_true',
+                        help='Set this param for using external exemplars')
     parser.add_argument('--box_bound', default=-1, type=int,
                         help='The max number of exemplars to be considered')
+    parser.add_argument('--split', default="test", type=str)
 
     # Training parameters
-    parser.add_argument('--start_epoch', default=0, type=int, metavar='N',
-                        help='start epoch')
-    parser.add_argument('--num_workers', default=10, type=int)
+    parser.add_argument('--num_workers', default=0, type=int)
     parser.add_argument('--pin_mem', action='store_true',
                         help='Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.')
     parser.add_argument('--no_pin_mem', action='store_false', dest='pin_mem')
-    parser.add_argument('--normalization', default=True, help='Set to False to disable test-time normalization')
     parser.set_defaults(pin_mem=True)
+    parser.add_argument('--normalization', default=True, help='Set to False to disable test-time normalization')
 
     # Distributed training parameters
     parser.add_argument('--world_size', default=1, type=int,
@@ -105,9 +79,9 @@ os.environ["CUDA_LAUNCH_BLOCKING"] = '1'
 
 
 class TestData(Dataset):
-    def __init__(self, external: bool, box_bound: int = -1):
+    def __init__(self, external: bool, box_bound: int = -1, split: str = "test"):
 
-        self.img = data_split['test']
+        self.img = data_split[split]
         self.img_dir = im_dir
         self.external = external
         self.box_bound = box_bound
@@ -120,6 +94,8 @@ class TestData(Dataset):
 
                 if bboxes:
                     image = Image.open('{}/{}'.format(im_dir, anno))
+                    if image.mode == "RGBA":
+                        image = image.convert("RGB")
                     image.load()
                     W, H = image.size
 
@@ -153,59 +129,62 @@ class TestData(Dataset):
         return len(self.img)
 
     def __getitem__(self, idx):
-        im_id = self.img[idx]
-        anno = annotations[im_id]
-        bboxes = anno['box_examples_coordinates'] if self.box_bound < 0 else \
-            anno['box_examples_coordinates'][:self.box_bound]
-        dots = np.array(anno['points'])
+        with misc.measure_time() as mt:
+            im_id = self.img[idx]
+            anno = annotations[im_id]
+            bboxes = anno['box_examples_coordinates'] if self.box_bound < 0 else \
+                anno['box_examples_coordinates'][:self.box_bound]
+            dots = np.array(anno['points'])
 
-        image = Image.open('{}/{}'.format(im_dir, im_id))
-        image.load()
-        W, H = image.size
+            image = Image.open('{}/{}'.format(im_dir, im_id))
+            if image.mode == "RGBA":
+                image = image.convert("RGB")
+            image.load()
+            W, H = image.size
 
-        new_H = 384
-        new_W = 16 * int((W / H * 384) / 16)
-        scale_factor_W = float(new_W) / W
-        scale_factor_H = float(new_H) / H
-        image = transforms.Resize((new_H, new_W))(image)
-        Normalize = transforms.Compose([transforms.ToTensor()])
-        image = Normalize(image)
+            new_H = 384
+            new_W = 16 * int((W / H * 384) / 16)
+            scale_factor_W = float(new_W) / W
+            scale_factor_H = float(new_H) / H
+            image = transforms.Resize((new_H, new_W))(image)
+            Normalize = transforms.Compose([transforms.ToTensor()])
+            image = Normalize(image)
 
-        boxes = list()
-        if self.external:
-            boxes = self.external_boxes
-        else:
-            rects = list()
-            for bbox in bboxes:
-                x1 = int(bbox[0][0] * scale_factor_W)
-                y1 = int(bbox[0][1] * scale_factor_H)
-                x2 = int(bbox[2][0] * scale_factor_W)
-                y2 = int(bbox[2][1] * scale_factor_H)
-                rects.append([y1, x1, y2, x2])
+            boxes = list()
+            if self.external:
+                boxes = self.external_boxes
+            else:
+                rects = list()
+                for bbox in bboxes:
+                    x1 = int(bbox[0][0] * scale_factor_W)
+                    y1 = int(bbox[0][1] * scale_factor_H)
+                    x2 = int(bbox[2][0] * scale_factor_W)
+                    y2 = int(bbox[2][1] * scale_factor_H)
+                    rects.append([y1, x1, y2, x2])
 
-            for box in rects:
-                box2 = [int(k) for k in box]
-                y1, x1, y2, x2 = box2[0], box2[1], box2[2], box2[3]
-                bbox = image[:, y1:y2 + 1, x1:x2 + 1]
-                bbox = transforms.Resize((64, 64))(bbox)
-                boxes.append(bbox.numpy())
+                for box in rects:
+                    box2 = [int(k) for k in box]
+                    y1, x1, y2, x2 = box2[0], box2[1], box2[2], box2[3]
+                    bbox = image[:, y1:y2 + 1, x1:x2 + 1]
+                    bbox = transforms.Resize((64, 64))(bbox)
+                    boxes.append(bbox.numpy())
 
-            boxes = np.array(boxes)
-            boxes = torch.Tensor(boxes)
+                boxes = np.array(boxes)
+                boxes = torch.Tensor(boxes)
 
-        if self.box_bound >= 0:
-            assert len(boxes) <= self.box_bound
+            if self.box_bound >= 0:
+                assert len(boxes) <= self.box_bound
 
-        # Only for visualisation purpose, no need for ground truth density map indeed.
-        gt_map = np.zeros((image.shape[1], image.shape[2]), dtype='float32')
-        for i in range(dots.shape[0]):
-            gt_map[min(new_H - 1, int(dots[i][1] * scale_factor_H))][min(new_W - 1, int(dots[i][0] * scale_factor_W))] = 1
-        gt_map = ndimage.gaussian_filter(gt_map, sigma=(1, 1), order=0)
-        gt_map = torch.from_numpy(gt_map)
-        gt_map = gt_map * 60
+            # Only for visualisation purpose, no need for ground truth density map indeed.
+            gt_map = np.zeros((image.shape[1], image.shape[2]), dtype='float32')
+            for i in range(dots.shape[0]):
+                gt_map[min(new_H - 1, int(dots[i][1] * scale_factor_H))][min(new_W - 1, int(dots[i][0] * scale_factor_W))] = 1
+            gt_map = ndimage.gaussian_filter(gt_map, sigma=(1, 1), order=0)
+            gt_map = torch.from_numpy(gt_map)
+            gt_map = gt_map * 60
 
-        sample = {'image': image, 'dots': dots, 'boxes': boxes, 'pos': rects if self.external is False else [], 'gt_map': gt_map, 'name': im_id}
-        return sample['image'], sample['dots'], sample['boxes'], sample['pos'], sample['gt_map'], sample['name']
+            sample = {'image': image, 'dots': dots, 'boxes': boxes, 'pos': rects if self.external is False else [], 'gt_map': gt_map, 'name': im_id}
+        return sample['image'], sample['dots'], sample['boxes'], sample['pos'], sample['gt_map'], sample['name'], mt.duration
 
 
 def main(args):
@@ -223,18 +202,13 @@ def main(args):
 
     cudnn.benchmark = True
 
-    dataset_test = TestData(args.external, args.box_bound)
-    print(dataset_test)
+    dataset_test = TestData(external=args.external, box_bound=args.box_bound, split=args.split)
 
-    if True:  # args.distributed:
-        num_tasks = misc.get_world_size()
-        global_rank = misc.get_rank()
-        sampler_test = torch.utils.data.DistributedSampler(
-            dataset_test, num_replicas=num_tasks, rank=global_rank, shuffle=True
-        )
-        print("Sampler_test = %s" % str(sampler_test))
-    else:
-        sampler_test = torch.utils.data.RandomSampler(dataset_test)
+    num_tasks = misc.get_world_size()
+    global_rank = misc.get_rank()
+    sampler_test = torch.utils.data.DistributedSampler(
+        dataset_test, num_replicas=num_tasks, rank=global_rank, shuffle=True
+    )
 
     data_loader_test = torch.utils.data.DataLoader(
         dataset_test, sampler=sampler_test,
@@ -246,12 +220,8 @@ def main(args):
 
     # define the model
     model = models_mae_cross.__dict__[args.model](norm_pix_loss=args.norm_pix_loss)
-
     model.to(device)
-
     model_without_ddp = model
-
-    # print("Model = %s" % str(model_without_ddp))
 
     if args.distributed:
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
@@ -260,67 +230,100 @@ def main(args):
     misc.load_model_FSC(args=args, model_without_ddp=model_without_ddp)
 
     print(f"Start testing.")
-    start_time = time.time()
 
     # test
-    epoch = 0
     model.eval()
-    metric_logger = misc.MetricLogger(delimiter="  ")
-    header = 'Epoch: [{}]'.format(epoch)
-    print_freq = 100
 
     # some parameters in training
     train_mae = 0
     train_rmse = 0
+    train_nae = 0
+    tot_load_time = 0
+    tot_infer_time = 0
 
     loss_array = []
     gt_array = []
     pred_arr = []
     name_arr = []
+    empties = []
 
-    for data_iter_step, (samples, gt_dots, boxes, pos, gt_map, im_name) in \
-            enumerate(metric_logger.log_every(data_loader_test, print_freq, header)):
+    for data_iter_step, (samples, gt_dots, boxes, pos, gt_map, im_name, load_time) in \
+            enumerate(data_loader_test):
 
-        im_name = Path(im_name[0])
-        samples = samples.to(device, non_blocking=True)
-        gt_dots = gt_dots.to(device, non_blocking=True).half()
-        boxes = boxes.to(device, non_blocking=True)
-        num_boxes = boxes.shape[1] if boxes.nelement() > 0 else 0
-        _, _, h, w = samples.shape
+        with misc.measure_time() as mt:
+            im_name = Path(im_name[0])
+            samples = samples.to(device, non_blocking=True)
+            gt_dots = gt_dots.to(device, non_blocking=True)
+            boxes = boxes.to(device, non_blocking=True)
+            num_boxes = boxes.shape[1] if boxes.nelement() > 0 else 0
+            _, _, h, w = samples.shape
+            print("num_boxes", num_boxes, args.box_bound)
 
-        r_cnt = 0
-        s_cnt = 0
-        for rect in pos:
-            r_cnt += 1
-            if r_cnt > 3:
-                break
-            if rect[2] - rect[0] < 10 and rect[3] - rect[1] < 10:
-                s_cnt += 1
+            r_cnt = 0
+            s_cnt = 0
+            for rect in pos:
+                r_cnt += 1
+                if r_cnt > 3:
+                    break
+                if rect[2] - rect[0] < 10 and rect[3] - rect[1] < 10:
+                    s_cnt += 1
 
-        if s_cnt >= 1:
-            r_images = []
-            r_densities = []
-            r_images.append(TF.crop(samples[0], 0, 0, int(h / 3), int(w / 3)))
-            r_images.append(TF.crop(samples[0], int(h / 3), 0, int(h / 3), int(w / 3)))
-            r_images.append(TF.crop(samples[0], 0, int(w / 3), int(h / 3), int(w / 3)))
-            r_images.append(TF.crop(samples[0], int(h / 3), int(w / 3), int(h / 3), int(w / 3)))
-            r_images.append(TF.crop(samples[0], int(h * 2 / 3), 0, int(h / 3), int(w / 3)))
-            r_images.append(TF.crop(samples[0], int(h * 2 / 3), int(w / 3), int(h / 3), int(w / 3)))
-            r_images.append(TF.crop(samples[0], 0, int(w * 2 / 3), int(h / 3), int(w / 3)))
-            r_images.append(TF.crop(samples[0], int(h / 3), int(w * 2 / 3), int(h / 3), int(w / 3)))
-            r_images.append(TF.crop(samples[0], int(h * 2 / 3), int(w * 2 / 3), int(h / 3), int(w / 3)))
+            if s_cnt >= 1:
+                r_images = []
+                r_densities = []
+                r_images.append(TF.crop(samples[0], 0, 0, int(h / 3), int(w / 3)))
+                r_images.append(TF.crop(samples[0], int(h / 3), 0, int(h / 3), int(w / 3)))
+                r_images.append(TF.crop(samples[0], 0, int(w / 3), int(h / 3), int(w / 3)))
+                r_images.append(TF.crop(samples[0], int(h / 3), int(w / 3), int(h / 3), int(w / 3)))
+                r_images.append(TF.crop(samples[0], int(h * 2 / 3), 0, int(h / 3), int(w / 3)))
+                r_images.append(TF.crop(samples[0], int(h * 2 / 3), int(w / 3), int(h / 3), int(w / 3)))
+                r_images.append(TF.crop(samples[0], 0, int(w * 2 / 3), int(h / 3), int(w / 3)))
+                r_images.append(TF.crop(samples[0], int(h / 3), int(w * 2 / 3), int(h / 3), int(w / 3)))
+                r_images.append(TF.crop(samples[0], int(h * 2 / 3), int(w * 2 / 3), int(h / 3), int(w / 3)))
 
-            pred_cnt = 0
-            for r_image in r_images:
-                r_image = transforms.Resize((h, w))(r_image).unsqueeze(0)
+                pred_cnt = 0
+                for r_image in r_images:
+                    r_image = transforms.Resize((h, w))(r_image).unsqueeze(0)
+                    density_map = torch.zeros([h, w])
+                    density_map = density_map.to(device, non_blocking=True)
+                    start = 0
+                    prev = -1
+
+                    with torch.no_grad():
+                        while start + 383 < w:
+                            output, = model(r_image[:, :, :, start:start + 384], boxes, num_boxes)
+                            output = output.squeeze(0)
+                            b1 = nn.ZeroPad2d(padding=(start, w - prev - 1, 0, 0))
+                            d1 = b1(output[:, 0:prev - start + 1])
+                            b2 = nn.ZeroPad2d(padding=(prev + 1, w - start - 384, 0, 0))
+                            d2 = b2(output[:, prev - start + 1:384])
+
+                            b3 = nn.ZeroPad2d(padding=(0, w - start, 0, 0))
+                            density_map_l = b3(density_map[:, 0:start])
+                            density_map_m = b1(density_map[:, start:prev + 1])
+                            b4 = nn.ZeroPad2d(padding=(prev + 1, 0, 0, 0))
+                            density_map_r = b4(density_map[:, prev + 1:w])
+
+                            density_map = density_map_l + density_map_r + density_map_m / 2 + d1 / 2 + d2
+
+                            prev = start + 383
+                            start = start + 128
+                            if start + 383 >= w:
+                                if start == w - 384 + 128:
+                                    break
+                                else:
+                                    start = w - 384
+
+                    pred_cnt += torch.sum(density_map / 60).item()
+                    r_densities += [density_map]
+            else:
                 density_map = torch.zeros([h, w])
                 density_map = density_map.to(device, non_blocking=True)
                 start = 0
                 prev = -1
-
                 with torch.no_grad():
                     while start + 383 < w:
-                        output, = model(r_image[:, :, :, start:start + 384], boxes, num_boxes)
+                        output, = model(samples[:, :, :, start:start + 384], boxes, num_boxes)
                         output = output.squeeze(0)
                         b1 = nn.ZeroPad2d(padding=(start, w - prev - 1, 0, 0))
                         d1 = b1(output[:, 0:prev - start + 1])
@@ -343,95 +346,79 @@ def main(args):
                             else:
                                 start = w - 384
 
-                pred_cnt += torch.sum(density_map / 60).item()
-                r_densities += [density_map]
-        else:
-            density_map = torch.zeros([h, w])
-            density_map = density_map.to(device, non_blocking=True)
-            start = 0
-            prev = -1
-            with torch.no_grad():
-                while start + 383 < w:
-                    output, = model(samples[:, :, :, start:start + 384], boxes, num_boxes)
-                    output = output.squeeze(0)
-                    b1 = nn.ZeroPad2d(padding=(start, w - prev - 1, 0, 0))
-                    d1 = b1(output[:, 0:prev - start + 1])
-                    b2 = nn.ZeroPad2d(padding=(prev + 1, w - start - 384, 0, 0))
-                    d2 = b2(output[:, prev - start + 1:384])
+                pred_cnt = torch.sum(density_map / 60).item()
 
-                    b3 = nn.ZeroPad2d(padding=(0, w - start, 0, 0))
-                    density_map_l = b3(density_map[:, 0:start])
-                    density_map_m = b1(density_map[:, start:prev + 1])
-                    b4 = nn.ZeroPad2d(padding=(prev + 1, 0, 0, 0))
-                    density_map_r = b4(density_map[:, prev + 1:w])
+            if args.normalization:
+                e_cnt = 0
+                for rect in pos:
+                    e_cnt += torch.sum(density_map[rect[0]:rect[2] + 1, rect[1]:rect[3] + 1] / 60).item()
+                e_cnt = e_cnt / 3
+                if e_cnt > 1.8:
+                    pred_cnt /= e_cnt
 
-                    density_map = density_map_l + density_map_r + density_map_m / 2 + d1 / 2 + d2
+            gt_cnt = gt_dots.shape[1]
+            cnt_err = abs(pred_cnt - gt_cnt)
+            train_mae += cnt_err
+            train_rmse += cnt_err ** 2
+            train_nae += cnt_err / gt_cnt if gt_cnt > 0 else 0
 
-                    prev = start + 383
-                    start = start + 128
-                    if start + 383 >= w:
-                        if start == w - 384 + 128:
-                            break
-                        else:
-                            start = w - 384
+            if gt_cnt == 0:
+                empties.append(im_name.name)
+            print(f'{data_iter_step}/{len(data_loader_test)}: pred_cnt: {pred_cnt:5.3f},  gt_cnt: {gt_cnt:5.3f},  error: {cnt_err:5.3f},  AE: {cnt_err:5.3f},  SE: {cnt_err ** 2:5.3f}, id: {im_name.name}, s_cnt: {s_cnt >= 1}')
 
-            pred_cnt = torch.sum(density_map / 60).item()
+            loss_array.append(cnt_err)
+            gt_array.append(gt_cnt)
+            pred_arr.append(round(pred_cnt))
+            name_arr.append(im_name.name)
 
-        if args.normalization:
-            e_cnt = 0
-            for rect in pos:
-                e_cnt += torch.sum(density_map[rect[0]:rect[2] + 1, rect[1]:rect[3] + 1] / 60).item()
-            e_cnt = e_cnt / 3
-            if e_cnt > 1.8:
-                pred_cnt /= e_cnt
-
-        gt_cnt = gt_dots.shape[1]
-        cnt_err = abs(pred_cnt - gt_cnt)
-        train_mae += cnt_err
-        train_rmse += cnt_err ** 2
-
-        print(f'{data_iter_step}/{len(data_loader_test)}: pred_cnt: {pred_cnt},  gt_cnt: {gt_cnt},  error: {cnt_err},  AE: {cnt_err},  SE: {cnt_err ** 2}, id: {im_name.name}, s_cnt: {s_cnt >= 1}')
-
-        loss_array.append(cnt_err)
-        gt_array.append(gt_cnt)
-        pred_arr.append(round(pred_cnt))
-        name_arr.append(im_name.name)
+        tot_load_time += load_time.item()
+        tot_infer_time += mt.duration
 
         # compute and save images
-        fig = samples[0]
-        box_map = torch.zeros([fig.shape[1], fig.shape[2]], device=device)
-        if args.external is False:
-            for rect in pos:
-                for i in range(rect[2] - rect[0]):
-                    box_map[min(rect[0] + i, fig.shape[1] - 1), min(rect[1], fig.shape[2] - 1)] = 10
-                    box_map[min(rect[0] + i, fig.shape[1] - 1), min(rect[3], fig.shape[2] - 1)] = 10
-                for i in range(rect[3] - rect[1]):
-                    box_map[min(rect[0], fig.shape[1] - 1), min(rect[1] + i, fig.shape[2] - 1)] = 10
-                    box_map[min(rect[2], fig.shape[1] - 1), min(rect[1] + i, fig.shape[2] - 1)] = 10
-            box_map = box_map.unsqueeze(0).repeat(3, 1, 1)
-        pred = density_map.unsqueeze(0) if s_cnt < 1 else misc.make_grid(r_densities, h, w).unsqueeze(0)
-        pred = torch.cat((pred, torch.zeros_like(pred), torch.zeros_like(pred))) * 5
-        fig = fig + pred + box_map
-        fig = torch.clamp(fig, 0, 1)
+        sam = samples[0]
+        gt_img = torch.cat((gt_map, torch.zeros_like(gt_map), torch.zeros_like(gt_map))).to(device=device)
+        box_map = misc.get_box_map(sam, pos, device, args.external)
+        pred_img = density_map.unsqueeze(0) if s_cnt < 1 else misc.make_grid(r_densities, h, w).unsqueeze(0)
+        pred_img = torch.cat((pred_img, torch.zeros_like(pred_img), torch.zeros_like(pred_img)))
 
-        pred_img = Image.new(mode="RGB", size=(w, h), color=(0, 0, 0))
-        draw = ImageDraw.Draw(pred_img)
-        draw.text((w-50, h-50), str(round(pred_cnt)), (255, 255, 255))
-        pred_img = np.array(pred_img).transpose((2, 0, 1))
-        pred_img = torch.tensor(np.array(pred_img), device=device) + pred
-        full = torch.cat((samples[0], fig, pred_img), -1)
+        den_gt = Image.new(mode="RGB", size=(w, h), color=(0, 0, 0))
+        draw = ImageDraw.Draw(den_gt)
+        draw.text((w-50, h-50), f"{gt_cnt:.3f}", (255, 255, 255))
+        den_gt = np.array(den_gt).transpose((2, 0, 1))
+        den_gt = torch.tensor(np.array(den_gt), device=device)
+        den_gt = sam * 0.6 + den_gt + gt_img
+        den_gt = torch.clamp(den_gt, 0, 1)
+
+        sam_box = torch.clamp(sam + box_map, 0, 1)
+
+        den_pr = Image.new(mode="RGB", size=(w, h), color=(0, 0, 0))
+        draw = ImageDraw.Draw(den_pr)
+        draw.text((w-50, h-50), f"{pred_cnt:.3f}", (255, 255, 255))
+        den_pr = np.array(den_pr).transpose((2, 0, 1))
+        den_pr = torch.tensor(np.array(den_pr), device=device)
+        den_pr = sam * 0.6 + den_pr + pred_img
+        den_pr = torch.clamp(den_pr, 0, 1)
+
+        full = torch.cat((den_gt, sam_box, den_pr), -1)
         torchvision.utils.save_image(full, (os.path.join(args.output_dir, f'full_{im_name.stem}__{round(pred_cnt)}{im_name.suffix}')))
+
+        # if args.external:
+        if num_boxes > 0:
+            boxes_img = torch.cat([boxes[x, :, :, :] for x in range(boxes.shape[0])], 2)
+            torchvision.utils.save_image(boxes_img, (os.path.join(args.output_dir, f'boxes_{im_name.stem}{im_name.suffix}')))
 
         torch.cuda.synchronize()
 
-    metric_logger.synchronize_between_processes()
-    print("Averaged stats:", metric_logger)
+    log_stats = {'MAE': train_mae / len(data_loader_test),
+                 'RMSE': (train_rmse / len(data_loader_test)) ** 0.5,
+                 'NAE': train_nae / len(data_loader_test),
+                 'Mean load time': tot_load_time / len(data_loader_test),
+                 'Mean infer time': tot_infer_time / len(data_loader_test),
+                 'Mean overall time': (tot_load_time + tot_infer_time) / len(data_loader_test)}
 
-    log_stats = {'MAE': train_mae / (len(data_loader_test)),
-                 'RMSE': (train_rmse / (len(data_loader_test))) ** 0.5}
-
-    print('Current MAE: {:5.2f}, RMSE: {:5.2f} '.format(train_mae / (len(data_loader_test)), (
-                train_rmse / (len(data_loader_test))) ** 0.5))
+    print("\nAverage stats:")
+    print(", ".join([f"{k}: {v:5.3f}" for k, v in log_stats.items()]))
+    print("empty images:", len(empties), empties)
 
     if args.output_dir and misc.is_main_process():
         with open(os.path.join(args.output_dir, "log.txt"), mode="a", encoding="utf-8") as f:
@@ -444,10 +431,6 @@ def main(args):
 
     df = pd.DataFrame(data={'time': np.arange(data_iter_step+1)+1, 'name': name_arr, 'prediction': pred_arr})
     df.to_csv(os.path.join(args.output_dir, f'results.csv'), index=False)
-
-    total_time = time.time() - start_time
-    total_time_str = str(datetime.timedelta(seconds=int(total_time)))
-    print('Testing time {}'.format(total_time_str))
 
 
 if __name__ == '__main__':

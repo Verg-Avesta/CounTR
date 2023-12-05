@@ -13,19 +13,20 @@ import builtins
 import datetime
 import os
 import time
+import json
 from collections import defaultdict, deque
 from pathlib import Path
 from typing import Union
 
-import numpy as np
 import pandas as pd
 import torch
 import torch.distributed as dist
 import wandb
 from torch._six import inf
-import timm
 import matplotlib.pyplot as plt
 from torchvision import transforms
+import cv2
+from tqdm import tqdm
 
 
 class SmoothedValue(object):
@@ -299,7 +300,7 @@ def get_grad_norm_(parameters, norm_type: float = 2.0) -> torch.Tensor:
     return total_norm
 
 
-def save_model(args, epoch, model, model_without_ddp, optimizer, loss_scaler, suffix=""):
+def save_model(args, epoch, model, model_without_ddp, optimizer, loss_scaler, suffix="", upload=True):
     if suffix:
         suffix = f"__{suffix}"
     output_dir = Path(args.output_dir)
@@ -315,12 +316,14 @@ def save_model(args, epoch, model, model_without_ddp, optimizer, loss_scaler, su
                 'args': args,
             }
             save_on_master(to_save, checkpoint_path)
-            log_wandb_model(f"checkpoint{suffix}", checkpoint_path, epoch)
+            if upload and is_main_process():
+                log_wandb_model(f"checkpoint{suffix}", checkpoint_path, epoch)
             print("checkpoint sent to W&B (if)")
     else:
         client_state = {'epoch': epoch}
         model.save_checkpoint(save_dir=args.output_dir, tag=ckpt_name, client_state=client_state)
-        log_wandb_model(f"checkpoint{suffix}", output_dir / ckpt_name, epoch)
+        if upload and is_main_process():
+            log_wandb_model(f"checkpoint{suffix}", output_dir / ckpt_name, epoch)
         print("checkpoint sent to W&B (else)")
 
 
@@ -369,7 +372,7 @@ def load_model_FSC(args, model_without_ddp):
             del checkpoint['model']['pos_embed']
 
         model_without_ddp.load_state_dict(checkpoint['model'], strict=False)
-        print("Resume checkpoint %s" % args.resume)
+        print(f"Resume checkpoint {args.resume} ({checkpoint['epoch']})")
 
 def load_model_FSC1(args, model_without_ddp):
     if args.resume:
@@ -391,6 +394,30 @@ def load_model_FSC1(args, model_without_ddp):
         model_without_ddp.load_state_dict(checkpoint['model'], strict=False)
         model_without_ddp.load_state_dict(checkpoint1, strict=False)
         print("Resume checkpoint %s" % args.resume)
+
+
+def load_model_FSC_full(args, model_without_ddp, optimizer, loss_scaler):
+    if args.resume:
+        if args.resume.startswith('https'):
+            checkpoint = torch.hub.load_state_dict_from_url(
+                args.resume, map_location='cpu', check_hash=True)
+        else:
+            checkpoint = torch.load(args.resume, map_location='cpu')
+
+        if 'pos_embed' in checkpoint['model'] and checkpoint['model']['pos_embed'].shape != \
+                model_without_ddp.state_dict()['pos_embed'].shape:
+            print(f"Removing key pos_embed from pretrained checkpoint")
+            del checkpoint['model']['pos_embed']
+
+        model_without_ddp.load_state_dict(checkpoint['model'], strict=False)
+        print("Resume checkpoint %s" % args.resume)
+
+        if 'optimizer' in checkpoint and 'epoch' in checkpoint and args.do_resume:
+            optimizer.load_state_dict(checkpoint['optimizer'])
+            args.start_epoch = checkpoint['epoch'] + 1
+            if 'scaler' in checkpoint:
+                loss_scaler.load_state_dict(checkpoint['scaler'])
+            print("With optim & scheduler!")
 
 
 def all_reduce_mean(x):
@@ -478,3 +505,114 @@ def min_max(t):
     t /= t.max(1, keepdim=True)[0]
     t = t.view(*t_shape)
     return t
+
+
+def min_max_np(v, new_min=0, new_max=1):
+    v_min, v_max = v.min(), v.max()
+    return (v - v_min) / (v_max - v_min) * (new_max - new_min) + new_min
+
+
+def get_box_map(sample, pos, device, external=False):
+    box_map = torch.zeros([sample.shape[1], sample.shape[2]], device=device)
+    if external is False:
+        for rect in pos:
+            for i in range(rect[2] - rect[0]):
+                box_map[min(rect[0] + i, sample.shape[1] - 1), min(rect[1], sample.shape[2] - 1)] = 10
+                box_map[min(rect[0] + i, sample.shape[1] - 1), min(rect[3], sample.shape[2] - 1)] = 10
+            for i in range(rect[3] - rect[1]):
+                box_map[min(rect[0], sample.shape[1] - 1), min(rect[1] + i, sample.shape[2] - 1)] = 10
+                box_map[min(rect[2], sample.shape[1] - 1), min(rect[1] + i, sample.shape[2] - 1)] = 10
+        box_map = box_map.unsqueeze(0).repeat(3, 1, 1)
+    return box_map
+
+
+timerfunc = time.perf_counter
+
+class measure_time(object):
+    def __enter__(self):
+        self.start = timerfunc()
+        return self
+
+    def __exit__(self, typ, value, traceback):
+        self.duration = timerfunc() - self.start
+
+    def __add__(self, other):
+        return self.duration + other.duration
+
+    def __sub__(self, other):
+        return self.duration - other.duration
+    
+    def __str__(self):
+        return str(self.duration)
+
+
+def log_test_results(test_dir):
+    test_dir = Path(test_dir)
+    logs = []
+    for d in test_dir.iterdir():
+        if d.is_dir() and (d / "log.txt").exists():
+            print(d.name)
+            with open(d / "log.txt") as f:
+                last = f.readlines()[-1]
+                j = json.loads(last)
+                j['name'] = d.name
+                logs.append(j)
+    df = pd.DataFrame(logs)
+
+    df.sort_values('name', inplace=True, ignore_index=True)
+    cols = list(df.columns)
+    cols = cols[-1:] + cols[:-1]
+    df = df[cols]
+
+    df.to_csv(test_dir / "logs.csv", index=False)
+
+
+COLORS = {
+    'muted blue': '#1f77b4',
+    'safety orange': '#ff7f0e',
+    'cooked asparagus green': '#2ca02c',
+    'brick red': '#d62728',
+    'muted purple': '#9467bd',
+    'chestnut brown': '#8c564b',
+    'raspberry yogurt pink': '#e377c2',
+    'middle gray': '#7f7f7f',
+    'curry yellow-green': '#bcbd22',
+    'blue-teal': '#17becf',
+    'muted blue light': '#419ede',
+    'safety orange light': '#ffa85b',
+    'cooked asparagus green light': '#4bce4b',
+    'brick red light': '#e36667'
+}
+
+
+def plot_test_results(test_dir):
+    import plotly.graph_objects as go
+
+    test_dir = Path(test_dir)
+    df = pd.read_csv(test_dir / "logs.csv")
+    df.sort_values('name', inplace=True)
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=df['name'], y=df['MAE'], line_color=COLORS['muted blue'],
+                        mode='lines', name='MAE'))
+    fig.add_trace(go.Scatter(x=df['name'], y=df['RMSE'], line_color=COLORS['safety orange'],
+                        mode='lines', name='RMSE'))
+    fig.add_trace(go.Scatter(x=df['name'], y=df['NAE'], line_color=COLORS['cooked asparagus green'],
+                        mode='lines', name='NAE'))
+
+    fig.update_yaxes(type="log")
+    fig.write_image(test_dir / "plot.jpeg", scale=4)
+    fig.write_html(test_dir / "plot.html", auto_open=False)
+
+
+def frames2vid(input_dir: str, output_file: str, pattern: str, fps: int, h=720, w=1280):
+    input_dir = Path(input_dir)
+    video_file = None
+    files = sorted(input_dir.glob(pattern))
+    video_file = cv2.VideoWriter(output_file, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
+    for img in tqdm(files, total=len(files)):
+        frame = cv2.imread(str(img))
+        frame = cv2.resize(frame, (w, h))
+        video_file.write(frame)
+
+    video_file.release()
