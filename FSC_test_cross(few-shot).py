@@ -89,37 +89,38 @@ class TestData(Dataset):
         if external:
             self.external_boxes = []
             for anno in annotations:
-                rects = []
-                bboxes = annotations[anno]['box_examples_coordinates']
+                if anno in self.img:
+                    rects = []
+                    bboxes = annotations[anno]['box_examples_coordinates']
 
-                if bboxes:
-                    image = Image.open('{}/{}'.format(im_dir, anno))
-                    if image.mode == "RGBA":
-                        image = image.convert("RGB")
-                    image.load()
-                    W, H = image.size
+                    if bboxes:
+                        image = Image.open('{}/{}'.format(im_dir, anno))
+                        if image.mode == "RGBA":
+                            image = image.convert("RGB")
+                        image.load()
+                        W, H = image.size
 
-                    new_H = 384
-                    new_W = 16 * int((W / H * 384) / 16)
-                    scale_factor_W = float(new_W) / W
-                    scale_factor_H = float(new_H) / H
-                    image = transforms.Resize((new_H, new_W))(image)
-                    Normalize = transforms.Compose([transforms.ToTensor()])
-                    image = Normalize(image)
+                        new_H = 384
+                        new_W = 16 * int((W / H * 384) / 16)
+                        scale_factor_W = float(new_W) / W
+                        scale_factor_H = float(new_H) / H
+                        image = transforms.Resize((new_H, new_W))(image)
+                        Normalize = transforms.Compose([transforms.ToTensor()])
+                        image = Normalize(image)
 
-                    for bbox in bboxes:
-                        x1 = int(bbox[0][0] * scale_factor_W)
-                        y1 = int(bbox[0][1] * scale_factor_H)
-                        x2 = int(bbox[2][0] * scale_factor_W)
-                        y2 = int(bbox[2][1] * scale_factor_H)
-                        rects.append([y1, x1, y2, x2])
+                        for bbox in bboxes:
+                            x1 = int(bbox[0][0] * scale_factor_W)
+                            y1 = int(bbox[0][1] * scale_factor_H)
+                            x2 = int(bbox[2][0] * scale_factor_W)
+                            y2 = int(bbox[2][1] * scale_factor_H)
+                            rects.append([y1, x1, y2, x2])
 
-                    for box in rects:
-                        box2 = [int(k) for k in box]
-                        y1, x1, y2, x2 = box2[0], box2[1], box2[2], box2[3]
-                        bbox = image[:, y1:y2 + 1, x1:x2 + 1]
-                        bbox = transforms.Resize((64, 64))(bbox)
-                        self.external_boxes.append(bbox.numpy())
+                        for box in rects:
+                            box2 = [int(k) for k in box]
+                            y1, x1, y2, x2 = box2[0], box2[1], box2[2], box2[3]
+                            bbox = image[:, y1:y2 + 1, x1:x2 + 1]
+                            bbox = transforms.Resize((64, 64))(bbox)
+                            self.external_boxes.append(bbox.numpy())
 
             self.external_boxes = np.array(self.external_boxes if self.box_bound < 0 else
                                            self.external_boxes[:self.box_bound])
