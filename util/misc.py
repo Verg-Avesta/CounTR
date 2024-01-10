@@ -27,6 +27,7 @@ import matplotlib.pyplot as plt
 from torchvision import transforms
 import cv2
 from tqdm import tqdm
+import numpy as np
 
 
 class SmoothedValue(object):
@@ -487,6 +488,24 @@ def write_zeroshot_annotations(p: Path, h: int = 960, w: int = 1280):
         split.write("  ]\n}")
 
 
+def write_annotations_gt(old_annotations: str, new_annotations: str, gt_csv: str):
+    with open(old_annotations) as oa_file:
+        j = json.load(oa_file)
+
+    gt = pd.read_csv(gt_csv)
+    gt = pd.concat([gt.drop(['region_shape_attributes'], axis=1), pd.json_normalize(gt['region_shape_attributes'].map(json.loads)).drop(['name'], axis=1)], axis=1)
+    filenames = gt['filename'].unique()
+    for filename in filenames:
+        cx = gt[gt.filename == filename]['cx']
+        cy = gt[gt.filename == filename]['cy']
+        points = [(x, y) for x, y in zip(cx, cy)]
+
+        j[filename]['points'] = points
+    
+    with open(new_annotations, 'w') as na_file:
+        json.dump(j, na_file, indent=4)
+
+
 def make_grid(imgs, h, w):
     assert len(imgs) == 9
     rows = []
@@ -513,16 +532,13 @@ def min_max_np(v, new_min=0, new_max=1):
 
 
 def get_box_map(sample, pos, device, external=False):
-    box_map = torch.zeros([sample.shape[1], sample.shape[2]], device=device)
+    c, h, w = sample.shape
+    box_map = np.zeros((h, w, c), np.uint8)
     if external is False:
         for rect in pos:
-            for i in range(rect[2] - rect[0]):
-                box_map[min(rect[0] + i, sample.shape[1] - 1), min(rect[1], sample.shape[2] - 1)] = 10
-                box_map[min(rect[0] + i, sample.shape[1] - 1), min(rect[3], sample.shape[2] - 1)] = 10
-            for i in range(rect[3] - rect[1]):
-                box_map[min(rect[0], sample.shape[1] - 1), min(rect[1] + i, sample.shape[2] - 1)] = 10
-                box_map[min(rect[2], sample.shape[1] - 1), min(rect[1] + i, sample.shape[2] - 1)] = 10
-        box_map = box_map.unsqueeze(0).repeat(3, 1, 1)
+            y1, x1, y2, x2 = rect
+            r = cv2.rectangle(box_map, (x1.item(), y1.item()), (x2.item(), y2.item()), (255, 255, 255), 1)
+    box_map = torch.tensor(box_map.transpose(2, 0, 1), device=device)
     return box_map
 
 
@@ -552,11 +568,10 @@ def log_test_results(test_dir):
     for d in test_dir.iterdir():
         if d.is_dir() and (d / "log.txt").exists():
             print(d.name)
-            with open(d / "log.txt") as f:
-                last = f.readlines()[-1]
-                j = json.loads(last)
-                j['name'] = d.name
-                logs.append(j)
+            tmp_df = pd.read_json(d / "log.txt", orient='records', lines=True)
+            j = tmp_df.mean()
+            j['name'] = d.name
+            logs.append(j)
     df = pd.DataFrame(logs)
 
     df.sort_values('name', inplace=True, ignore_index=True)
