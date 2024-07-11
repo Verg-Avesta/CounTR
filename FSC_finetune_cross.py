@@ -408,11 +408,11 @@ def main(args):
             if args.output_dir and (epoch % save_freq == 0 or epoch + 1 == args.epochs) and epoch != 0:
                 misc.save_model(
                     args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
-                    loss_scaler=loss_scaler, epoch=epoch, suffix=f"finetuning_{epoch}", upload=epoch % 100 == 0)
-            elif True:
-                misc.save_model(
-                    args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
-                    loss_scaler=loss_scaler, epoch=epoch, suffix=f"finetuning_last", upload=False)
+                    loss_scaler=loss_scaler, epoch=epoch, suffix=f"finetuning_{epoch}",
+                    upload=((epoch + 1) % 100 == 0 or epoch + 1 == args.epochs))
+            misc.save_model(
+                args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
+                loss_scaler=loss_scaler, epoch=epoch, suffix="finetuning_last", upload=False)
             if args.output_dir and val_mae / len(data_loader_val) < min_MAE:
                 min_MAE = val_mae / len(data_loader_val)
                 misc.save_model(

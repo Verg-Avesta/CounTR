@@ -99,14 +99,27 @@ class ResizeTrainImage(ResizeSomeImage):
         self.max_hw = MAX_HW
         self.do_aug = do_aug
 
+    def flex_resize(self, h, w):
+        """
+        Flexible resize. Brings the smallest size to MAX_HW and scales the other size accordingly.
+        """
+        if h < self.max_hw <= w or h <= w < self.max_hw:
+            new_h = self.max_hw
+            new_w = round(w * new_h / h)
+        elif w < self.max_hw <= h or w < h < self.max_hw:
+            new_w = self.max_hw
+            new_h = round(h * new_w / w)
+        else:
+            new_w = 16 * int(w / 16)
+            new_h = 16 * int(h / 16)
+        return new_h, new_w
+
     def __call__(self, sample):
         image, lines_boxes, dots, im_id, m_flag = sample['image'], sample['lines_boxes'], \
             sample['dots'], sample['id'], sample['m_flag']
 
         W, H = image.size
-
-        new_H = 16 * int(H / 16)
-        new_W = 16 * int(W / 16)
+        new_H, new_W = self.flex_resize(H, W)
         scale_factor_h = float(new_H) / H
         scale_factor_w = float(new_W) / W
         resized_image = transforms.Resize((new_H, new_W))(image)
@@ -201,8 +214,7 @@ class ResizeTrainImage(ResizeSomeImage):
                             Tdots = np.array(self.annotations[Tim_id]['points'])
                             Timage = Image.open('{}/{}'.format(self.im_dir, Tim_id))
                             Timage.load()
-                            new_TW = 16 * int(Timage.size[0] / 16)
-                            new_TH = 16 * int(Timage.size[1] / 16)
+                            new_TH, new_TW = self.flex_resize(Timage.size[1], Timage.size[0])
                             Tscale_factor_w = float(new_TW) / Timage.size[0]
                             Tscale_factor_h = float(new_TH) / Timage.size[1]
                             r_image = TTensor(transforms.Resize((new_TH, new_TW))(Timage))
@@ -244,9 +256,10 @@ class ResizeTrainImage(ResizeSomeImage):
 
             else:
                 # Random 384*384 crop in a new_W*384 image and 384*new_W density map
-                start = random.randint(0, new_W - 1 - 383)
-                reresized_image = TF.crop(re_image, 0, start, 384, 384)
-                reresized_density = resized_density[:, start:start + 384]
+                start_W = random.randint(0, new_W - 1 - 383)
+                start_H = random.randint(0, new_H - 1 - 383)
+                reresized_image = TF.crop(re_image, start_H, start_W, 384, 384)
+                reresized_density = resized_density[start_H:start_H + 384, start_W:start_W + 384]
 
         else:
             # Random 384*384 crop in a new_W*384 image and 384*new_W density map

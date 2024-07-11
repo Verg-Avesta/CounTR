@@ -56,6 +56,8 @@ def get_args_parser():
     parser.add_argument('--box_bound', default=-1, type=int,
                         help='The max number of exemplars to be considered')
     parser.add_argument('--split', default="test", type=str)
+    parser.add_argument('--max_s_cnt', default=1, type=int,
+                        help="The max number of small exemplars for splitting the image in a grid")
 
     # Training parameters
     parser.add_argument('--num_workers', default=0, type=int)
@@ -89,37 +91,38 @@ class TestData(Dataset):
         if external:
             self.external_boxes = []
             for anno in annotations:
-                rects = []
-                bboxes = annotations[anno]['box_examples_coordinates']
+                if anno in self.img:
+                    rects = []
+                    bboxes = annotations[anno]['box_examples_coordinates']
 
-                if bboxes:
-                    image = Image.open('{}/{}'.format(im_dir, anno))
-                    if image.mode == "RGBA":
-                        image = image.convert("RGB")
-                    image.load()
-                    W, H = image.size
+                    if bboxes:
+                        image = Image.open('{}/{}'.format(im_dir, anno))
+                        if image.mode == "RGBA":
+                            image = image.convert("RGB")
+                        image.load()
+                        W, H = image.size
 
-                    new_H = 384
-                    new_W = 16 * int((W / H * 384) / 16)
-                    scale_factor_W = float(new_W) / W
-                    scale_factor_H = float(new_H) / H
-                    image = transforms.Resize((new_H, new_W))(image)
-                    Normalize = transforms.Compose([transforms.ToTensor()])
-                    image = Normalize(image)
+                        new_H = 384
+                        new_W = 16 * int((W / H * 384) / 16)
+                        scale_factor_W = float(new_W) / W
+                        scale_factor_H = float(new_H) / H
+                        image = transforms.Resize((new_H, new_W))(image)
+                        Normalize = transforms.Compose([transforms.ToTensor()])
+                        image = Normalize(image)
 
-                    for bbox in bboxes:
-                        x1 = int(bbox[0][0] * scale_factor_W)
-                        y1 = int(bbox[0][1] * scale_factor_H)
-                        x2 = int(bbox[2][0] * scale_factor_W)
-                        y2 = int(bbox[2][1] * scale_factor_H)
-                        rects.append([y1, x1, y2, x2])
+                        for bbox in bboxes:
+                            x1 = int(bbox[0][0] * scale_factor_W)
+                            y1 = int(bbox[0][1] * scale_factor_H)
+                            x2 = int(bbox[2][0] * scale_factor_W)
+                            y2 = int(bbox[2][1] * scale_factor_H)
+                            rects.append([y1, x1, y2, x2])
 
-                    for box in rects:
-                        box2 = [int(k) for k in box]
-                        y1, x1, y2, x2 = box2[0], box2[1], box2[2], box2[3]
-                        bbox = image[:, y1:y2 + 1, x1:x2 + 1]
-                        bbox = transforms.Resize((64, 64))(bbox)
-                        self.external_boxes.append(bbox.numpy())
+                        for box in rects:
+                            box2 = [int(k) for k in box]
+                            y1, x1, y2, x2 = box2[0], box2[1], box2[2], box2[3]
+                            bbox = image[:, y1:y2 + 1, x1:x2 + 1]
+                            bbox = transforms.Resize((64, 64))(bbox)
+                            self.external_boxes.append(bbox.numpy())
 
             self.external_boxes = np.array(self.external_boxes if self.box_bound < 0 else
                                            self.external_boxes[:self.box_bound])
@@ -257,7 +260,6 @@ def main(args):
             boxes = boxes.to(device, non_blocking=True)
             num_boxes = boxes.shape[1] if boxes.nelement() > 0 else 0
             _, _, h, w = samples.shape
-            print("num_boxes", num_boxes, args.box_bound)
 
             r_cnt = 0
             s_cnt = 0
@@ -268,7 +270,7 @@ def main(args):
                 if rect[2] - rect[0] < 10 and rect[3] - rect[1] < 10:
                     s_cnt += 1
 
-            if s_cnt >= 1:
+            if s_cnt >= args.max_s_cnt:
                 r_images = []
                 r_densities = []
                 r_images.append(TF.crop(samples[0], 0, 0, int(h / 3), int(w / 3)))
@@ -364,7 +366,7 @@ def main(args):
 
             if gt_cnt == 0:
                 empties.append(im_name.name)
-            print(f'{data_iter_step}/{len(data_loader_test)}: pred_cnt: {pred_cnt:5.3f},  gt_cnt: {gt_cnt:5.3f},  error: {cnt_err:5.3f},  AE: {cnt_err:5.3f},  SE: {cnt_err ** 2:5.3f}, id: {im_name.name}, s_cnt: {s_cnt >= 1}')
+            print(f'{data_iter_step}/{len(data_loader_test)}: pred_cnt: {pred_cnt:5.3f},  gt_cnt: {gt_cnt:5.3f},  error: {cnt_err:5.3f},  AE: {cnt_err:5.3f},  SE: {cnt_err ** 2:5.3f}, id: {im_name.name}, s_cnt: {s_cnt >= args.max_s_cnt}')
 
             loss_array.append(cnt_err)
             gt_array.append(gt_cnt)
@@ -378,18 +380,8 @@ def main(args):
         sam = samples[0]
         gt_img = torch.cat((gt_map, torch.zeros_like(gt_map), torch.zeros_like(gt_map))).to(device=device)
         box_map = misc.get_box_map(sam, pos, device, args.external)
-        pred_img = density_map.unsqueeze(0) if s_cnt < 1 else misc.make_grid(r_densities, h, w).unsqueeze(0)
-        pred_img = torch.cat((pred_img, torch.zeros_like(pred_img), torch.zeros_like(pred_img)))
-
-        den_gt = Image.new(mode="RGB", size=(w, h), color=(0, 0, 0))
-        draw = ImageDraw.Draw(den_gt)
-        draw.text((w-50, h-50), f"{gt_cnt:.3f}", (255, 255, 255))
-        den_gt = np.array(den_gt).transpose((2, 0, 1))
-        den_gt = torch.tensor(np.array(den_gt), device=device)
-        den_gt = sam * 0.6 + den_gt + gt_img
-        den_gt = torch.clamp(den_gt, 0, 1)
-
-        sam_box = torch.clamp(sam + box_map, 0, 1)
+        pred_img = density_map.unsqueeze(0) if s_cnt < args.max_s_cnt else misc.make_grid(r_densities, h, w).unsqueeze(0)
+        pred_img = torch.cat((pred_img, pred_img, torch.zeros_like(pred_img)))
 
         den_pr = Image.new(mode="RGB", size=(w, h), color=(0, 0, 0))
         draw = ImageDraw.Draw(den_pr)
@@ -399,13 +391,38 @@ def main(args):
         den_pr = sam * 0.6 + den_pr + pred_img
         den_pr = torch.clamp(den_pr, 0, 1)
 
-        full = torch.cat((den_gt, sam_box, den_pr), -1)
-        torchvision.utils.save_image(full, (os.path.join(args.output_dir, f'full_{im_name.stem}__{round(pred_cnt)}{im_name.suffix}')))
+        if gt_cnt != 0:
+            fp_img = torch.zeros_like(pred_img)
+            mask = (gt_img - pred_img) < -0.01
+            fp_img[mask] = pred_img[mask]
+            tp_img = sam * 0.6 + (pred_img - fp_img)[[1, 0, 2], ...]
 
-        # if args.external:
+            mix1 = (pred_img.clamp(0, 1) - gt_img.clamp(0, 1)).abs()
+            mix2 = sam * 0.6 + mix1
+            
+            labels = Image.new(mode="RGB", size=(w, h), color=(0, 0, 0))
+            draw = ImageDraw.Draw(labels)
+            draw.text((w-150, h-130), f"GT: {gt_cnt:.3f}", (255, 255, 255))
+            draw.text((w-150, h-110), f"Pred: {pred_cnt:.3f}", (255, 255, 255))
+            draw.text((w-150, h-90), "True Positives", (0, 255, 0))
+            draw.text((w-150, h-70), "False Positives", (255, 255, 0))
+            draw.text((w-150, h-50), "False Negatives", (255, 0, 0))
+            labels = np.array(labels).transpose((2, 0, 1))
+            labels = torch.tensor(np.array(labels), device=device)
+
+            tp_cnt = (pred_img - fp_img).sum() / 60
+            print(f"{tp_cnt=}")
+
+            sam_box = torch.clamp(sam + box_map + labels, 0, 1)
+            full = torch.cat((mix2, sam_box, tp_img), -1)
+        else:
+            sam_box = torch.clamp(sam + box_map, 0, 1)
+            full = torch.cat((sam_box, den_pr), -1)
+        torchvision.utils.save_image(full, (os.path.join(args.output_dir, f'full_{im_name.stem}__{round(pred_cnt)}.png')))
+
         if num_boxes > 0:
             boxes_img = torch.cat([boxes[x, :, :, :] for x in range(boxes.shape[0])], 2)
-            torchvision.utils.save_image(boxes_img, (os.path.join(args.output_dir, f'boxes_{im_name.stem}{im_name.suffix}')))
+            torchvision.utils.save_image(boxes_img, (os.path.join(args.output_dir, f'boxes_{im_name.stem}.png')))
 
         torch.cuda.synchronize()
 
@@ -418,7 +435,10 @@ def main(args):
 
     print("\nAverage stats:")
     print(", ".join([f"{k}: {v:5.3f}" for k, v in log_stats.items()]))
-    print("empty images:", len(empties), empties)
+    if len(empties) != len(data_loader_test):
+        print("empty images:", len(empties), empties)
+    else:
+        print("empty images:", len(empties), "(all)")
 
     if args.output_dir and misc.is_main_process():
         with open(os.path.join(args.output_dir, "log.txt"), mode="a", encoding="utf-8") as f:
