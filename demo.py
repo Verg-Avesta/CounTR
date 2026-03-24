@@ -10,12 +10,12 @@ import torchvision.transforms.functional as TF
 
 import timm
 
-assert "0.4.5" <= timm.__version__ <= "0.4.9"  # version check
+assert timm.__version__ >= "0.4.5"  # version check
 
 from util.misc import make_grid
 import models_mae_cross
 
-device = torch.device('cuda')
+device = torch.device('cpu')
 
 """
 python demo.py
@@ -32,16 +32,22 @@ class measure_time(object):
 
 
 def load_image():
-    im_dir = '/GPFS/data/changliu/Dataset/FSC147/images_384_VarV2'
-    im_id = '222.jpg'
+    im_dir = 'home/user/CounTR'
+    im_id = 'sample.jpeg'
 
     image = Image.open('{}/{}'.format(im_dir, im_id))
     image.load()
     W, H = image.size
 
-    # Resize the image size so that the height is 384
+    # Resize so height = 384 and width is a multiple of 16.
+    # For portrait images this produces new_W < 384, which means the horizontal
+    # sliding window never fires (it requires width >= 384). Fix: clamp new_W
+    # to a minimum of 384 and re-resize, which applies a slight horizontal
+    # stretch but keeps all image content intact (no black padding).
     new_H = 384
     new_W = 16 * int((W / H * 384) / 16)
+    if new_W < 384:
+        new_W = 384
     scale_factor_H = float(new_H) / H
     scale_factor_W = float(new_W) / W
     image = transforms.Resize((new_H, new_W))(image)
@@ -51,9 +57,9 @@ def load_image():
     # Coordinates of the exemplar bound boxes
     # The left upper corner and the right lower corner
     bboxes = [
-        [[136, 98], [173, 127]],
-        [[209, 125], [242, 150]],
-        [[212, 168], [258, 200]]
+        [[661.05, 486.45], [712.56, 534.22]],
+        [[751.22, 458.48], [866.78, 615.52]],
+        [[337.27, 494.8], [370.88, 530.91]]
     ]
     boxes = list()
     rects = list()
@@ -182,9 +188,20 @@ def run_one_image(samples, boxes, pos, model):
     box_map = box_map.unsqueeze(0).repeat(3, 1, 1)
     pred = density_map.unsqueeze(0).repeat(3, 1, 1) if s_cnt < 1 \
         else make_grid(r_densities, h, w).unsqueeze(0).repeat(3, 1, 1)
-    fig = fig + box_map + pred / 2
+    pred_vis = pred / (pred.max() + 1e-8)
+    fig = fig + box_map + pred_vis * 0.6
     fig = torch.clamp(fig, 0, 1)
     torchvision.utils.save_image(fig, f'./Image/Visualisation.png')
+    density_norm = pred / (pred.max() + 1e-8)
+    torchvision.utils.save_image(density_norm, f'./Image/DensityMap.png')
+    import matplotlib.pyplot as plt
+    density_np = pred[0].detach().cpu().numpy()
+    plt.figure(figsize=(8, 8))
+    plt.imshow(density_np, cmap='jet')
+    plt.colorbar()
+    plt.title(f'Predicted count: {pred_cnt:.1f}')
+    plt.savefig('./Image/DensityHeatmap.png', dpi=100, bbox_inches='tight')
+    plt.close()
     # GT map needs coordinates for all GT dots, which is hard to input and is not a must for the demo. You can provide it yourself.
     return pred_cnt, et
 
@@ -194,7 +211,7 @@ model = models_mae_cross.__dict__['mae_vit_base_patch16'](norm_pix_loss='store_t
 model.to(device)
 model_without_ddp = model
 
-checkpoint = torch.load('./output_allnew_dir/checkpoint-400.pth', map_location='cpu')
+checkpoint = torch.load('.FSC147.pth', map_location='cpu', weights_only=False)
 model_without_ddp.load_state_dict(checkpoint['model'], strict=False)
 print("Resume checkpoint %s" % './output_allnew_dir/checkpoint-400.pth')
 

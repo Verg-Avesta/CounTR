@@ -22,7 +22,7 @@ import pandas as pd
 import torch
 import torch.distributed as dist
 import wandb
-from torch._six import inf
+from torch import inf
 import matplotlib.pyplot as plt
 from torchvision import transforms
 import cv2
@@ -341,7 +341,7 @@ def load_model(args, model_without_ddp, optimizer, loss_scaler):
             checkpoint = torch.hub.load_state_dict_from_url(
                 args.resume, map_location='cpu', check_hash=True)
         else:
-            checkpoint = torch.load(args.resume, map_location='cpu')
+            checkpoint = torch.load(args.resume, map_location='cpu', weights_only=False)
 
         if 'pos_embed' in checkpoint['model'] and checkpoint['model']['pos_embed'].shape != model_without_ddp.state_dict()['pos_embed'].shape:
             print(f"Removing key pos_embed from pretrained checkpoint")
@@ -366,7 +366,7 @@ def load_model_FSC(args, model_without_ddp):
             checkpoint = torch.hub.load_state_dict_from_url(
                 args.resume, map_location='cpu', check_hash=True)
         else:
-            checkpoint = torch.load(args.resume, map_location='cpu')
+            checkpoint = torch.load(args.resume, map_location='cpu', weights_only=False)
 
         if 'pos_embed' in checkpoint['model'] and checkpoint['model']['pos_embed'].shape != model_without_ddp.state_dict()['pos_embed'].shape:
             print(f"Removing key pos_embed from pretrained checkpoint")
@@ -381,10 +381,10 @@ def load_model_FSC1(args, model_without_ddp):
             checkpoint = torch.hub.load_state_dict_from_url(
                 args.resume, map_location='cpu', check_hash=True)
         else:
-            checkpoint = torch.load(args.resume, map_location='cpu')
+            checkpoint = torch.load(args.resume, map_location='cpu', weights_only=False)
             #model = timm.create_model('vit_base_patch16_224', pretrained=True)
             #torch.save(model.state_dict(), './output_abnopre_dir/checkpoint-6657.pth')
-            checkpoint1 = torch.load('./output_abnopre_dir/checkpoint-6657.pth', map_location='cpu')
+            checkpoint1 = torch.load('./output_abnopre_dir/checkpoint-6657.pth', map_location='cpu', weights_only=False)
 
         if 'pos_embed' in checkpoint['model'] and checkpoint['model']['pos_embed'].shape != model_without_ddp.state_dict()['pos_embed'].shape:
             print(f"Removing key pos_embed from pretrained checkpoint")
@@ -403,7 +403,7 @@ def load_model_FSC_full(args, model_without_ddp, optimizer, loss_scaler):
             checkpoint = torch.hub.load_state_dict_from_url(
                 args.resume, map_location='cpu', check_hash=True)
         else:
-            checkpoint = torch.load(args.resume, map_location='cpu')
+            checkpoint = torch.load(args.resume, map_location='cpu', weights_only=False)
 
         if 'pos_embed' in checkpoint['model'] and checkpoint['model']['pos_embed'].shape != \
                 model_without_ddp.state_dict()['pos_embed'].shape:

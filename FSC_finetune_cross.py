@@ -17,7 +17,7 @@ import wandb
 import timm
 from tqdm import tqdm
 
-assert "0.4.5" <= timm.__version__ <= "0.4.9"  # version check
+assert timm.__version__ >= "0.4.5"  # version check
 import timm.optim.optim_factory as optim_factory
 
 import util.misc as misc

@@ -8,3 +8,4 @@
 /wandb/
 /results/
 /env/
+**.DS_Store

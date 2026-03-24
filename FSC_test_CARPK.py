@@ -18,7 +18,7 @@ import torchvision.transforms.functional as TF
 import hub
 import timm
 
-assert timm.__version__ == "0.3.2"  # version check
+assert timm.__version__ >= "0.3.2"  # version check
 
 import util.misc as misc
 import models_mae_cross

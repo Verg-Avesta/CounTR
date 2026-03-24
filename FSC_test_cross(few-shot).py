@@ -17,7 +17,7 @@ from torchvision import transforms
 import torchvision.transforms.functional as TF
 import timm
 
-assert "0.4.5" <= timm.__version__ <= "0.4.9"  # version check
+assert timm.__version__ >= "0.4.5"  # version check
 
 import util.misc as misc
 import models_mae_cross

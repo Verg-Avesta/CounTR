@@ -15,7 +15,7 @@ import models_mae_cross
 from util.misc import measure_time
 
 
-assert "0.4.5" <= timm.__version__ <= "0.4.9"  # version check
+assert timm.__version__ >= "0.4.5"  # version check
 device = torch.device('cuda')
 shot_num = 0
 
@@ -103,7 +103,7 @@ if __name__ == '__main__':
     model.to(device)
     model_without_ddp = model
 
-    checkpoint = torch.load(args.model_path, map_location='cpu')
+    checkpoint = torch.load(args.model_path, map_location='cpu', weights_only=False)
     model_without_ddp.load_state_dict(checkpoint['model'], strict=False)
     print(f"Resume checkpoint {args.model_path}")
 
